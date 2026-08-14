@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import posixpath
+import re
 from pathlib import Path, PurePosixPath
 
 from skill_delegator.models import (
@@ -18,6 +19,9 @@ from skill_delegator.models import (
 
 class ResolutionError(ValueError):
     """Desired state cannot be resolved without violating a boundary."""
+
+
+_RUNTIME_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 def _duplicates(values: tuple[str, ...]) -> list[str]:
@@ -111,6 +115,10 @@ def _locked_skills(config: AuthorityConfig, lock: SkillLock) -> dict[str, Locked
         for skill in source.skills:
             suffix = _canonical_suffix(source.source_id, skill.canonical_id)
             _validate_locked_path(source.source_id, spec.skill_root, skill, suffix)
+            if _RUNTIME_NAME_PATTERN.fullmatch(skill.runtime_name) is None:
+                raise ResolutionError(
+                    f"locked artifact {skill.canonical_id} has an invalid runtime name"
+                )
             if skill.canonical_id in skills:
                 raise ResolutionError(f"duplicate locked artifact id: {skill.canonical_id}")
             skills[skill.canonical_id] = skill

@@ -150,10 +150,28 @@ def _resolved_skills(source: SourceSpec, root: Path) -> tuple[ResolvedSkill, ...
     return tuple(skills)
 
 
+def _validate_lexical_filesystem_source(path: Path) -> None:
+    """Reject symlinked or non-directory ancestors before resolving a local source."""
+
+    lexical = Path(os.path.abspath(path))
+    current = Path(lexical.anchor)
+    try:
+        for part in lexical.parts[1:]:
+            current /= part
+            metadata = current.lstat()
+            if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+                raise SourceError("filesystem-source-unsafe-symlink-or-nondirectory")
+    except FileNotFoundError as error:
+        raise SourceError("filesystem-source-missing") from error
+    except OSError as error:
+        raise SourceError("filesystem-source-unreadable") from error
+
+
 def _resolve_filesystem(source: SourceSpec, cache_root: Path) -> ResolvedSource:
     if not isinstance(source.location, Path):
         raise SourceError(f"filesystem source {source.id} location must be a Path")
     # Validate the full source before creating any cache state or publishing links.
+    _validate_lexical_filesystem_source(source.location)
     validate_snapshot_tree(source.location)
     discover_skills(source.location, source.skill_root)
     revision = hash_tree(source.location)

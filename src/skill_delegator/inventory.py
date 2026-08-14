@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import stat
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -12,6 +13,8 @@ import yaml
 
 from skill_delegator.errors import SourceError
 from skill_delegator.models import SkillArtifact
+
+_RUNTIME_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 class _UniqueLoader(yaml.SafeLoader):
@@ -125,6 +128,8 @@ def _frontmatter(path: Path) -> tuple[str, str]:
     description = document.get("description")
     if not isinstance(name, str) or not name.strip():
         raise SourceError(f"{path}: invalid SKILL.md frontmatter: name is required")
+    if _RUNTIME_NAME_PATTERN.fullmatch(name) is None:
+        raise SourceError(f"{path}: invalid SKILL.md frontmatter: name is not a safe runtime id")
     if not isinstance(description, str) or not description.strip():
         raise SourceError(f"{path}: invalid SKILL.md frontmatter: description is required")
     return name, description

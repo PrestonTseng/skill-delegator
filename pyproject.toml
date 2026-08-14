@@ -29,8 +29,17 @@ line-length = 100
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/.superpowers",
+    "/var",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/skill_delegator"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "schemas" = "skill_delegator/schemas"
+"docs" = "skill_delegator/docs"
+"config" = "skill_delegator/example/config"
+"tests/fixtures/example-source" = "skill_delegator/example/tests/fixtures/example-source"

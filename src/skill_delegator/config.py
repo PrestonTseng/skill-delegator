@@ -108,7 +108,9 @@ def _resolve(config_dir: Path, value: str) -> Path:
     path = Path(value)
     if not path.is_absolute():
         path = config_dir / path
-    return path.resolve(strict=False)
+    # Preserve the lexical chain so source validation can reject symlinked
+    # ancestors instead of silently converting them to an external real path.
+    return Path(os.path.abspath(path))
 
 
 def _validate_canonical_ids(values: list[str], filename: str) -> None:
@@ -140,6 +142,8 @@ def _reject_symlink_components(repository_root: Path, target_root: Path) -> None
         current /= part
         if current.is_symlink():
             raise ConfigError(f"main example target path must not contain symlinks: {current}")
+        if os.path.lexists(current) and not current.is_dir():
+            raise ConfigError(f"main example target path component must be a directory: {current}")
 
 
 def load_config(config_dir: Path, *, require_lock: bool = True) -> AuthorityConfig:

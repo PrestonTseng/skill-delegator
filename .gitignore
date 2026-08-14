@@ -4,4 +4,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 dist/
-/var/
+/var/cache/
+/var/example-targets/
+/var/receipts/
