@@ -11,24 +11,39 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["source_id", "resolved_commit", "skills"],
+        "required": ["source_id", "type", "skills"],
         "properties": {
           "source_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "type": {"enum": ["filesystem", "git"]},
           "resolved_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "tree_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
           "skills": {
             "type": "array",
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["canonical_id", "path", "sha256"],
+              "required": ["canonical_id", "runtime_name", "path", "sha256"],
               "properties": {
                 "canonical_id": {"type": "string", "minLength": 3},
+                "runtime_name": {"type": "string", "minLength": 1},
                 "path": {"type": "string", "minLength": 1},
                 "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
               }
             }
           }
-        }
+        },
+        "oneOf": [
+          {
+            "properties": {"type": {"const": "git"}},
+            "required": ["resolved_commit"],
+            "not": {"required": ["tree_hash"]}
+          },
+          {
+            "properties": {"type": {"const": "filesystem"}},
+            "required": ["tree_hash"],
+            "not": {"required": ["resolved_commit"]}
+          }
+        ]
       }
     }
   }

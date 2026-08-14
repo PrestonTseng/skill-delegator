@@ -348,3 +348,33 @@ def test_ordinary_unicode_is_preserved_in_all_path_fields(tmp_path: Path) -> Non
     assert config.sources[0].location == (config_dir / "../資料/技能").resolve()
     assert config.sources[0].skill_root == Path("能力")
     assert config.targets[0].root == (config_dir / "../輸出/目標").resolve()
+
+
+def test_git_location_remains_repository_string_while_filesystem_location_is_resolved(
+    tmp_path: Path,
+) -> None:
+    filesystem_config = load_config(EXAMPLE_CONFIG)
+    assert isinstance(filesystem_config.sources[0].location, Path)
+    assert filesystem_config.sources[0].location.is_absolute()
+
+    config_dir = copy_config(tmp_path)
+
+    def use_git_source(document: dict[str, object]) -> None:
+        sources = document["sources"]
+        assert isinstance(sources, list)
+        source = sources[0]
+        assert isinstance(source, dict)
+        source.update(
+            {
+                "type": "git",
+                "location": "ssh://git@example.invalid/skills.git",
+                "track": "main",
+            }
+        )
+
+    rewrite_yaml(config_dir, "sources.yaml", use_git_source)
+    git_config = load_config(config_dir)
+
+    assert git_config.sources[0].location == "ssh://git@example.invalid/skills.git"
+    assert isinstance(git_config.sources[0].location, str)
+    assert git_config.sources[0].track == "main"

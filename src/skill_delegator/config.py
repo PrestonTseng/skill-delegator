@@ -6,7 +6,7 @@ import json
 import os
 import re
 from importlib.resources import files
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -218,8 +218,13 @@ def load_config(config_dir: Path) -> AuthorityConfig:
         SourceSpec(
             id=entry["id"],
             type=entry["type"],
-            location=_resolve(config_dir, entry["location"]),
-            skill_root=Path(entry["skill_root"]),
+            location=(
+                _resolve(config_dir, entry["location"])
+                if entry["type"] == "filesystem"
+                else entry["location"]
+            ),
+            skill_root=PurePosixPath(entry["skill_root"]),
+            track=entry.get("track"),
         )
         for entry in source_entries
     )
