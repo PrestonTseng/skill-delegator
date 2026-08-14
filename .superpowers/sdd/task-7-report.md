@@ -120,6 +120,31 @@ Rollback replacement and rollback-directory-fsync failures are re-observed rathe
 - `skillctl validate --config config` -> **Valid configuration: 1 authority, 1 source, 1 pool entry, 2 targets**
 - Build to `/tmp/task7-final-build` -> **sdist and wheel built successfully**
 
+## Atomic-replace commit-boundary closure (supersedes rollback architecture)
+
+The second and final lock-publication correction removes public-path rollback entirely. All stage writes, descriptor chmod, file fsync, exact staged-byte/inode checks, anchored-parent verification, and prior public snapshot validation occur before `os.replace`. The successful atomic replace is now the sole commit boundary. After it returns, `write_lock_atomic` never unlinks or replaces `skill-lock.yaml`; there are no backup journals.
+
+A post-commit directory-fsync or parent-verification error is classified by read-only observation of the public pathname. Exact staged inode plus exact candidate bytes returns committed success and preserves normal CLI proposal output. Missing, symlink, nonregular, different bytes, or any different inode (including same bytes in a concurrent inode) is preserved and raises bounded `lock-rollback-unsafe`. Any failure before replace raises bounded `lock-publication-failed`, best-effort removes only the unique private stage, and preserves exact prior bytes/inode or prior absence.
+
+### Commit-boundary TDD evidence
+
+- RED: two deterministic regressions at the rejected observation-to-rollback boundary both failed. For existing and initially absent locks, the old implementation respectively overwrote and unlinked a concurrent same-bytes/new-inode replacement and reported `lock-publication-failed`.
+- GREEN: the regressions now inject the same concurrent states at the old rollback observation checkpoint; both public replacements remain untouched and are classified `lock-rollback-unsafe`.
+- Existing rollback-expectation tests were replaced with the explicit commit contract: normal atomic success, exact candidate post-fsync success (including CLI proposal output), concurrent existing/absent state unsafe, and prepublication existing/absent preservation.
+
+### Fresh commit-boundary verification
+
+- `uv lock --check` -> **Resolved 15 packages; exit 0**
+- `uv sync --frozen --python 3.12` -> **Checked 14 packages; exit 0**
+- Python gate -> **Python 3.12.13**
+- Focused lock/update/upstream gate -> **58 passed in 2.51s**
+- Full suite -> **278 passed in 10.78s**
+- `ruff format --check .` -> **42 files already formatted**
+- `ruff check .` -> **All checks passed**
+- `compileall` -> **exit 0**
+- `skillctl validate --config config` -> **Valid configuration: 1 authority, 1 source, 1 pool entry, 2 targets**
+- Build to `/tmp/task7-commit-boundary-build` -> **sdist and wheel built successfully**
+
 ## Concerns
 
-The ancestor-replacement and concurrent-lock cases use deterministic checkpoint/fault injection. They verify the specified identities and rollback outcomes but are not a claim of exhaustive coverage for every possible OS-level interleaving. No external network, configured target apply, grant/pool/source edits, checked-in config update/apply, push, merge, Task 8 work, or `/opt/knowledge` access was used.
+The ancestor-replacement and concurrent-lock cases use deterministic checkpoint/fault injection. They verify the specified identities and commit-boundary outcomes but are not a claim of exhaustive coverage for every possible OS-level interleaving. No external network, configured target apply, grant/pool/source edits, checked-in config update/apply, push, merge, Task 8 work, or `/opt/knowledge` access was used.

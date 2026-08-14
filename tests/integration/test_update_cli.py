@@ -252,7 +252,7 @@ def test_option_conflicts_fail_closed_and_write_failure_preserves_original(
     assert lock.stat().st_ino == inode
 
 
-def test_candidate_post_replace_failure_rolls_back_and_discloses_no_exception(
+def test_candidate_post_commit_failure_prints_normal_proposal(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -262,69 +262,27 @@ def test_candidate_post_replace_failure_rolls_back_and_discloses_no_exception(
     write_skill(work, "two")
     git(work, "add", ".")
     git(work, "commit", "-qm", "two")
-    git(work, "push", "-q", "origin", "main")
-    lock = config / "skill-lock.yaml"
-    before = lock.read_bytes()
-    inode = lock.stat().st_ino
-    original_fsync = os.fsync
-    failed = False
-
-    def fail_publication_fsync(fd: int) -> None:
-        nonlocal failed
-        if not failed and stat.S_ISDIR(os.fstat(fd).st_mode):
-            failed = True
-            raise OSError("SECRET post-publication failure at /private/path")
-        original_fsync(fd)
-
-    monkeypatch.setattr(lockfile.os, "fsync", fail_publication_fsync)
-
-    assert main(["update", "upstream", "--config", str(config)]) == 3
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err == "Update blocked: lock-publication-failed\n"
-    assert "SECRET" not in captured.err
-    assert "Traceback" not in captured.err
-    assert lock.read_bytes() == before
-    assert lock.stat().st_ino == inode
-
-
-def test_candidate_owned_after_failed_restore_prints_normal_proposal(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config, work, _ = fixture(tmp_path)
-    capsys.readouterr()
-    write_skill(work, "two")
-    git(work, "add", ".")
-    git(work, "commit", "-qm", "two")
-    new_commit = git(work, "rev-parse", "HEAD")
     git(work, "push", "-q", "origin", "main")
     lock = config / "skill-lock.yaml"
     before = lock.read_bytes()
     original_fsync = os.fsync
-    original_replace = os.replace
+    failed = False
     candidate_inode = 0
 
     def fail_publication_fsync(fd: int) -> None:
-        nonlocal candidate_inode
-        if stat.S_ISDIR(os.fstat(fd).st_mode) and candidate_inode == 0:
+        nonlocal failed, candidate_inode
+        if not failed and stat.S_ISDIR(os.fstat(fd).st_mode):
+            failed = True
             candidate_inode = lock.stat().st_ino
             raise OSError("SECRET post-publication failure at /private/path")
         original_fsync(fd)
 
-    def fail_backup_restore(src, dst, *args, **kwargs):
-        if str(src).startswith(".skill-lock.yaml.backup-"):
-            raise OSError("SECRET rollback failure at /private/path")
-        return original_replace(src, dst, *args, **kwargs)
-
     monkeypatch.setattr(lockfile.os, "fsync", fail_publication_fsync)
-    monkeypatch.setattr(lockfile.os, "replace", fail_backup_restore)
 
     assert main(["update", "upstream", "--config", str(config)]) == 0
     captured = capsys.readouterr()
     assert captured.err == ""
-    assert f"new: {new_commit}" in captured.out
+    assert "source upstream: fast-forward" in captured.out
     assert "SECRET" not in captured.out
     assert lock.read_bytes() != before
     assert lock.stat().st_ino == candidate_inode
