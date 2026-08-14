@@ -1,0 +1,142 @@
+"""Strict YAML and JSON Schema configuration loader."""
+
+from __future__ import annotations
+
+import json
+from importlib.resources import files
+from pathlib import Path
+from typing import Any
+
+import yaml
+from jsonschema import Draft202012Validator
+
+from skill_delegator.errors import ConfigError
+from skill_delegator.models import AuthorityConfig, PoolSpec, SourceSpec, TargetSpec
+
+_CONFIG_SCHEMAS = {
+    "authority.yaml": "authority.schema.json",
+    "sources.yaml": "sources.schema.json",
+    "pool.yaml": "pool.schema.json",
+    "delegations.yaml": "delegations.schema.json",
+    "skill-lock.yaml": "lock.schema.json",
+}
+
+
+def _schema_text(schema_name: str) -> str:
+    repository_schema = Path(__file__).parents[2] / "schemas" / schema_name
+    if repository_schema.is_file():
+        return repository_schema.read_text(encoding="utf-8")
+    packaged_schema = files("skill_delegator").joinpath("schemas", schema_name)
+    return packaged_schema.read_text(encoding="utf-8")
+
+
+def _load_document(config_dir: Path, filename: str, schema_name: str) -> dict[str, Any]:
+    path = config_dir / filename
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise ConfigError(f"{filename}: cannot read file: {error}") from error
+    try:
+        document = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        raise ConfigError(f"{filename}: invalid YAML: {error}") from error
+
+    schema = json.loads(_schema_text(schema_name))
+    errors = sorted(
+        Draft202012Validator(schema).iter_errors(document),
+        key=lambda error: tuple(str(part) for part in error.absolute_path),
+    )
+    if errors:
+        error = errors[0]
+        location = ".".join(str(part) for part in error.absolute_path) or "$"
+        raise ConfigError(f"{filename} at {location}: {error.message}")
+    return document
+
+
+def _ensure_unique_ids(items: list[dict[str, Any]], kind: str) -> None:
+    seen: set[str] = set()
+    for item in items:
+        identifier = item["id"]
+        if identifier in seen:
+            raise ConfigError(f"duplicate {kind} id: {identifier}")
+        seen.add(identifier)
+
+
+def _resolve(config_dir: Path, value: str) -> Path:
+    path = Path(value)
+    if not path.is_absolute():
+        path = config_dir / path
+    return path.resolve(strict=False)
+
+
+def load_config(config_dir: Path) -> AuthorityConfig:
+    """Load and validate one authority without reading source or target contents."""
+
+    config_dir = config_dir.resolve(strict=False)
+    documents = {
+        filename: _load_document(config_dir, filename, schema)
+        for filename, schema in _CONFIG_SCHEMAS.items()
+    }
+    authority = documents["authority.yaml"]["authority"]
+    source_entries = documents["sources.yaml"]["sources"]
+    pool_entries = documents["pool.yaml"]["skills"]
+    target_entries = documents["delegations.yaml"]["targets"]
+
+    _ensure_unique_ids(source_entries, "source")
+    _ensure_unique_ids(target_entries, "target")
+
+    source_ids = {entry["id"] for entry in source_entries}
+    for canonical_id in pool_entries:
+        source_id = canonical_id.split("/", 1)[0]
+        if source_id not in source_ids:
+            raise ConfigError(f"pool.yaml: unknown source id in pool entry: {canonical_id}")
+
+    pool = set(pool_entries)
+    for target in target_entries:
+        unknown = set(target["grants"]) - pool
+        if unknown:
+            raise ConfigError(
+                f"delegations.yaml: target {target['id']} grants skills outside pool: "
+                f"{', '.join(sorted(unknown))}"
+            )
+
+    fixture_policy = authority["fixture_policy"]
+    if authority["id"] == "main-example" and fixture_policy != "safe-main-example":
+        raise ConfigError("authority.yaml: main-example requires safe-main-example fixture policy")
+    if fixture_policy == "safe-main-example":
+        safe_parent = (config_dir.parent / "var" / "example-targets").resolve(strict=False)
+        for target in target_entries:
+            raw_root = Path(target["root"])
+            if raw_root.is_absolute():
+                raise ConfigError("main example target roots must be relative")
+            resolved_root = _resolve(config_dir, target["root"])
+            if not resolved_root.is_relative_to(safe_parent):
+                raise ConfigError(
+                    "main example target roots must resolve under var/example-targets/"
+                )
+
+    sources = tuple(
+        SourceSpec(
+            id=entry["id"],
+            type=entry["type"],
+            location=_resolve(config_dir, entry["location"]),
+            skill_root=Path(entry["skill_root"]),
+        )
+        for entry in source_entries
+    )
+    targets = tuple(
+        TargetSpec(
+            id=entry["id"],
+            root=_resolve(config_dir, entry["root"]),
+            grants=tuple(entry["grants"]),
+        )
+        for entry in target_entries
+    )
+    return AuthorityConfig(
+        authority_id=authority["id"],
+        fail_closed=authority["fail_closed"],
+        fixture_policy=fixture_policy,
+        sources=sources,
+        pool=tuple(PoolSpec(canonical_id=value) for value in pool_entries),
+        targets=targets,
+    )

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lock.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "sources"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_id", "resolved_commit", "skills"],
+        "properties": {
+          "source_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "resolved_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["canonical_id", "path", "sha256"],
+              "properties": {
+                "canonical_id": {"type": "string", "minLength": 3},
+                "path": {"type": "string", "minLength": 1},
+                "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
