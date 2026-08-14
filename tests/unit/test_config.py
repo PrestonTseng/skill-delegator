@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -249,3 +250,101 @@ def test_nul_in_path_field_is_filename_and_field_bearing_config_error(
     message = str(exc_info.value)
     assert message.startswith(f"{filename} at {collection}.0.{field}:")
     assert "NUL" in message
+
+
+@pytest.mark.parametrize("fixture_policy", ("safe-main-example", "none"))
+@pytest.mark.parametrize(("filename", "collection", "field"), PATH_FIELDS)
+@pytest.mark.parametrize("surrogate_code_point", (0xD800, 0xDFFF), ids=("high", "low"))
+def test_lone_surrogate_in_any_path_field_is_precise_config_error(
+    tmp_path: Path,
+    fixture_policy: str,
+    filename: str,
+    collection: str,
+    field: str,
+    surrogate_code_point: int,
+) -> None:
+    config_dir = copy_config(tmp_path)
+    surrogate = chr(surrogate_code_point)
+    if fixture_policy == "none":
+        rewrite_yaml(
+            config_dir,
+            "authority.yaml",
+            lambda document: document["authority"].update(
+                {"id": "non-fixture", "fixture_policy": "none"}
+            ),
+        )
+
+    def inject_surrogate(document: dict[str, object]) -> None:
+        entries = document[collection]
+        assert isinstance(entries, list)
+        entries[0][field] = f"before{surrogate}after"
+
+    rewrite_yaml(config_dir, filename, inject_surrogate)
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(config_dir)
+
+    message = str(exc_info.value)
+    assert message.startswith(f"{filename} at {collection}.0.{field}:")
+    assert "surrogate" in message
+
+
+@pytest.mark.parametrize(("filename", "collection", "field"), PATH_FIELDS)
+def test_filesystem_unencodable_path_field_is_precise_config_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    filename: str,
+    collection: str,
+    field: str,
+) -> None:
+    config_dir = copy_config(tmp_path)
+
+    def inject_rejected_value(document: dict[str, object]) -> None:
+        entries = document[collection]
+        assert isinstance(entries, list)
+        entries[0][field] = "filesystem-rejected"
+
+    rewrite_yaml(config_dir, filename, inject_rejected_value)
+
+    def reject_test_value(value: Any) -> bytes:
+        if value == "filesystem-rejected":
+            raise UnicodeEncodeError("test-filesystem", value, 0, 1, "cannot encode")
+        return value.encode()
+
+    monkeypatch.setattr("skill_delegator.config.os.fsencode", reject_test_value)
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(config_dir)
+
+    message = str(exc_info.value)
+    assert message.startswith(f"{filename} at {collection}.0.{field}:")
+    assert "filesystem encoding" in message
+
+
+def test_ordinary_unicode_is_preserved_in_all_path_fields(tmp_path: Path) -> None:
+    config_dir = copy_config(tmp_path)
+    rewrite_yaml(
+        config_dir,
+        "authority.yaml",
+        lambda document: document["authority"].update(
+            {"id": "non-fixture", "fixture_policy": "none"}
+        ),
+    )
+
+    def use_unicode_source_paths(document: dict[str, object]) -> None:
+        source = document["sources"][0]
+        source["location"] = "../資料/技能"
+        source["skill_root"] = "能力"
+
+    rewrite_yaml(config_dir, "sources.yaml", use_unicode_source_paths)
+    rewrite_yaml(
+        config_dir,
+        "delegations.yaml",
+        lambda document: document["targets"][0].update({"root": "../輸出/目標"}),
+    )
+
+    config = load_config(config_dir)
+
+    assert config.sources[0].location == (config_dir / "../資料/技能").resolve()
+    assert config.sources[0].skill_root == Path("能力")
+    assert config.targets[0].root == (config_dir / "../輸出/目標").resolve()

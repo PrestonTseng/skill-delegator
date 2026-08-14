@@ -108,6 +108,14 @@ def _ensure_unique_ids(items: list[dict[str, Any]], kind: str) -> None:
 def _validate_path_string(value: str, filename: str, field: str) -> None:
     if "\0" in value:
         raise ConfigError(f"{filename} at {field}: path must not contain NUL")
+    if any("\ud800" <= character <= "\udfff" for character in value):
+        raise ConfigError(f"{filename} at {field}: path must not contain Unicode surrogates")
+    try:
+        os.fsencode(value)
+    except UnicodeError as error:
+        raise ConfigError(
+            f"{filename} at {field}: path is not representable in the filesystem encoding"
+        ) from error
 
 
 def _resolve(config_dir: Path, value: str) -> Path:
