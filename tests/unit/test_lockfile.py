@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import errno
+import os
 import shutil
+import stat
 import subprocess
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
@@ -13,7 +15,8 @@ from skill_delegator import source_store
 from skill_delegator.errors import SourceError
 from skill_delegator.inventory import hash_tree
 from skill_delegator.lockfile import build_lock, serialize_lock, write_lock_atomic
-from skill_delegator.models import AuthorityConfig, PoolSpec, SourceSpec
+from skill_delegator.models import AuthorityConfig, PoolSpec, SkillLock, SourceSpec
+from skill_delegator.safe_paths import AnchoredDirectory
 from skill_delegator.source_store import resolve_sources
 
 
@@ -197,6 +200,78 @@ def test_rejects_symlinked_cache_root_state(tmp_path: Path, symlink_level: str) 
     assert tuple(external.iterdir()) == ()
 
 
+@pytest.mark.parametrize("bad_component", ("var", "cache", "sources"))
+@pytest.mark.parametrize("kind", ("symlink", "file"))
+def test_rejects_every_untrusted_cache_ancestor_without_touching_external_state(
+    tmp_path: Path, bad_component: str, kind: str
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "skills/one")
+    project = tmp_path / "project"
+    cache = project / "var" / "cache" / "sources"
+    component = {
+        "var": project / "var",
+        "cache": project / "var" / "cache",
+        "sources": project / "var" / "cache" / "sources",
+    }[bad_component]
+    component.parent.mkdir(parents=True)
+    external = tmp_path / "external"
+    external.mkdir()
+    sentinel = external / "sentinel"
+    sentinel.write_bytes(b"unchanged")
+    if kind == "symlink":
+        component.symlink_to(external, target_is_directory=True)
+    else:
+        component.write_bytes(b"not-a-directory")
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("skills"), None)
+
+    with pytest.raises(SourceError, match="cache"):
+        resolve_sources(config_for(source), cache)
+
+    assert sentinel.read_bytes() == b"unchanged"
+    assert tuple(external.iterdir()) == (sentinel,)
+
+
+@pytest.mark.parametrize("replaced", ("var", "cache", "source-cache"))
+def test_candidate_cache_writes_fail_closed_when_retained_ancestor_is_replaced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replaced: str
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "skills/one")
+    project = tmp_path / "project"
+    cache = project / "var" / "cache" / "sources"
+    target = tmp_path / "configured-target"
+    target.mkdir()
+    sentinel = target / "sentinel"
+    sentinel.write_bytes(b"unchanged")
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("skills"), None)
+    original_verify = AnchoredDirectory.verify
+    calls = 0
+
+    def replace_before_write(self: AnchoredDirectory, *, description: str) -> None:
+        nonlocal calls
+        if description == "content-addressed-cache":
+            calls += 1
+            if calls == 2:
+                component = {
+                    "var": project / "var",
+                    "cache": project / "var" / "cache",
+                    "source-cache": cache / "local",
+                }[replaced]
+                detached = component.with_name(component.name + "-detached")
+                component.rename(detached)
+                component.symlink_to(target, target_is_directory=True)
+        original_verify(self, description=description)
+
+    monkeypatch.setattr(AnchoredDirectory, "verify", replace_before_write)
+
+    with pytest.raises(SourceError, match="cache.*identity-changed"):
+        resolve_sources(config_for(source), cache)
+
+    assert sentinel.read_bytes() == b"unchanged"
+    assert tuple(target.iterdir()) == (sentinel,)
+
+
 def test_filesystem_tree_hash_is_revision_and_cache_key(tmp_path: Path) -> None:
     source_root = tmp_path / "source"
     write_skill(source_root, "skills/one")
@@ -310,3 +385,156 @@ def test_lock_serialization_and_atomic_write_are_byte_stable(tmp_path: Path) -> 
     assert serialize_lock(lock) == first
     assert path.stat().st_ino != 0
     assert first_stat.st_mode == path.stat().st_mode
+
+
+def _different_lock(lock: SkillLock) -> SkillLock:
+    source = lock.sources[0]
+    return replace(lock, sources=(replace(source, tree_hash="f" * 64),))
+
+
+def test_lock_publication_directory_fsync_failure_restores_original_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "one")
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("."), None)
+    lock = build_lock(config_for(source), resolve_sources(config_for(source), tmp_path / "cache"))
+    path = tmp_path / "skill-lock.yaml"
+    write_lock_atomic(path, lock)
+    before = path.read_bytes()
+    inode = path.stat().st_ino
+    original_fsync = os.fsync
+    directory_calls = 0
+
+    def fail_first_directory_fsync(fd: int) -> None:
+        nonlocal directory_calls
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            directory_calls += 1
+            if directory_calls == 1:
+                raise OSError("injected directory fsync failure SECRET")
+        original_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fail_first_directory_fsync)
+
+    with pytest.raises(SourceError, match="lock-publication-failed"):
+        write_lock_atomic(path, _different_lock(lock))
+
+    assert path.read_bytes() == before
+    assert path.stat().st_ino == inode
+
+
+def test_initial_lock_publication_failure_restores_absence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "one")
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("."), None)
+    lock = build_lock(config_for(source), resolve_sources(config_for(source), tmp_path / "cache"))
+    path = tmp_path / "skill-lock.yaml"
+    original_fsync = os.fsync
+
+    def fail_directory_fsync(fd: int) -> None:
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError("injected directory fsync failure")
+        original_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fail_directory_fsync)
+    with pytest.raises(SourceError, match="lock-publication-failed"):
+        write_lock_atomic(path, lock)
+    assert not path.exists()
+
+
+def test_lock_publication_never_overwrites_concurrent_same_bytes_new_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "one")
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("."), None)
+    lock = build_lock(config_for(source), resolve_sources(config_for(source), tmp_path / "cache"))
+    path = tmp_path / "skill-lock.yaml"
+    write_lock_atomic(path, lock)
+    candidate = _different_lock(lock)
+    candidate_bytes = serialize_lock(candidate)
+    original_fsync = os.fsync
+    concurrent_inode = 0
+
+    def compete_then_fail(fd: int) -> None:
+        nonlocal concurrent_inode
+        if stat.S_ISDIR(os.fstat(fd).st_mode) and concurrent_inode == 0:
+            concurrent = tmp_path / "concurrent"
+            concurrent.write_bytes(candidate_bytes)
+            os.replace(concurrent, path)
+            concurrent_inode = path.stat().st_ino
+            raise OSError("injected directory fsync failure")
+        original_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", compete_then_fail)
+
+    with pytest.raises(SourceError, match="lock-rollback-unsafe"):
+        write_lock_atomic(path, candidate)
+
+    assert path.read_bytes() == candidate_bytes
+    assert path.stat().st_ino == concurrent_inode
+
+
+@pytest.mark.parametrize("failure", ("stage-close", "backup-cleanup"))
+def test_lock_publication_cleanup_failures_have_one_coherent_public_outcome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "one")
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("."), None)
+    lock = build_lock(config_for(source), resolve_sources(config_for(source), tmp_path / "cache"))
+    path = tmp_path / "skill-lock.yaml"
+    write_lock_atomic(path, lock)
+    before = path.read_bytes()
+    inode = path.stat().st_ino
+    if failure == "stage-close":
+        original_close = os.close
+        failed = False
+
+        def fail_stage_close(fd: int) -> None:
+            nonlocal failed
+            if not failed and stat.S_ISREG(os.fstat(fd).st_mode):
+                failed = True
+                original_close(fd)
+                raise OSError("injected stage close failure")
+            original_close(fd)
+
+        monkeypatch.setattr(os, "close", fail_stage_close)
+    else:
+        original_unlink = os.unlink
+
+        def fail_backup_cleanup(path_value, *args, **kwargs):
+            if str(path_value).startswith(".skill-lock.yaml.backup-"):
+                raise OSError("injected backup cleanup failure")
+            return original_unlink(path_value, *args, **kwargs)
+
+        monkeypatch.setattr(os, "unlink", fail_backup_cleanup)
+
+    try:
+        write_lock_atomic(path, _different_lock(lock))
+    except SourceError:
+        assert path.read_bytes() == before
+        assert path.stat().st_ino == inode
+    else:
+        assert path.read_bytes() == serialize_lock(_different_lock(lock))
+
+
+def test_lock_publication_prepublication_failure_preserves_original(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "one")
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("."), None)
+    lock = build_lock(config_for(source), resolve_sources(config_for(source), tmp_path / "cache"))
+    path = tmp_path / "skill-lock.yaml"
+    write_lock_atomic(path, lock)
+    before = path.read_bytes()
+    inode = path.stat().st_ino
+
+    monkeypatch.setattr(os, "chmod", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("fail")))
+    with pytest.raises(SourceError, match="lock-publication-failed"):
+        write_lock_atomic(path, _different_lock(lock))
+    assert path.read_bytes() == before
+    assert path.stat().st_ino == inode

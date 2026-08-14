@@ -63,6 +63,34 @@ Fresh gates run after formatting:
 - `uv run --frozen --python 3.12 skillctl validate --config config` -> **Valid configuration: 1 authority, 1 source, 1 pool entry, 2 targets**
 - `uv build` -> **sdist and wheel built successfully**
 
+## Review-finding closure
+
+A bounded follow-up closed the three Task 7 review defects without adding apply, Task 8, or network behavior:
+
+- Cache roots are now created and traversed one lexical component at a time from the filesystem anchor with `dir_fd`, `O_DIRECTORY`, and `O_NOFOLLOW`. Every opened ancestor identity remains retained and is rechecked before/after cache writes. Update-check temporaries and source snapshots operate through retained descriptor paths, so replacing `project/var`, `cache`, `sources`, or a per-source cache cannot redirect writes.
+- Lock publication now uses an anchored parent FD, fsynced unique stage, retained hard-link rollback journal, exact staged/published inode checks, directory fsync, and rollback+fsync. A post-replace reported failure restores the prior pathname bytes/inode (or prior absence); a concurrent same-bytes/new-inode replacement is never overwritten and returns `lock-rollback-unsafe`.
+- Update public boundaries now translate inventory/cache/source/config/publication failures to bounded allow-listed messages. Real CLI probes assert source/outside/target/cache paths, symlink targets, injected secrets, raw exceptions, and tracebacks are absent from stderr.
+
+### Follow-up TDD evidence
+
+- RED (before implementation): focused regressions produced **7 failed, 31 passed**. Failures reproduced symlinked `project/var` target mutation, ancestor symlink acceptance, post-replace fsync leaving the candidate public, and raw configured-location disclosure.
+- GREEN after the final ancestor-matrix expansion: focused cache/lock/update/adversarial gate produced **55 passed**.
+- Full regression gate after the final expansion: **275 passed** (the prior 252-test contract plus 23 deterministic regressions).
+
+### Fresh follow-up verification
+
+- `uv lock --check` -> **Resolved 15 packages; exit 0**
+- `uv sync --frozen --python 3.12` -> **Checked 14 packages; exit 0**
+- Python gate -> **Python 3.12.13**
+- `ruff format --check .` -> **42 files already formatted**
+- `ruff check .` -> **All checks passed**
+- Focused Task 7/cache/lock gate -> **55 passed in 2.56s**
+- Real subprocess CLI symlink/non-directory ancestor matrix -> **6 passed in 1.46s**
+- Full suite -> **275 passed in 10.68s**
+- `compileall` -> **exit 0**
+- `skillctl validate --config config` -> **Valid configuration: 1 authority, 1 source, 1 pool entry, 2 targets**
+- Build to `/tmp/task7-fix-build` -> **sdist and wheel built successfully**
+
 ## Concerns
 
-None known. No external network, configured target apply, grant/pool/source edits, checked-in config update/apply, staging outside the focused amend, push, merge, Task 8 work, or `/opt/knowledge` access was used.
+The ancestor-replacement and concurrent-lock cases use deterministic checkpoint/fault injection. They verify the specified identities and rollback outcomes but are not a claim of exhaustive coverage for every possible OS-level interleaving. No external network, configured target apply, grant/pool/source edits, checked-in config update/apply, push, merge, Task 8 work, or `/opt/knowledge` access was used.

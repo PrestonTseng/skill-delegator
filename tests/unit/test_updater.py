@@ -178,7 +178,7 @@ def test_prepare_update_blocks_deleted_or_renamed_grant_but_allows_ungranted_rem
     (work / "skills" / "pooled").rename(work / "skills" / "renamed")
     commit(work, "rename grant")
     git(work, "push", "-q", "origin", "main")
-    with pytest.raises(SourceError, match="missing locked skill|absent from lock"):
+    with pytest.raises(SourceError, match="candidate-invalid"):
         prepare_update("upstream", config, old)
 
 

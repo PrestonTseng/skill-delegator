@@ -7,3 +7,7 @@ class ConfigError(ValueError):
 
 class SourceError(ValueError):
     """A source cannot be safely resolved, inventoried, or locked."""
+
+
+class UpdateError(SourceError):
+    """A bounded public update failure containing allow-listed identifiers only."""

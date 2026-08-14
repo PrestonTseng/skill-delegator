@@ -8,7 +8,7 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 
-from skill_delegator.errors import SourceError
+from skill_delegator.errors import SourceError, UpdateError
 from skill_delegator.inventory import hash_tree
 from skill_delegator.lockfile import build_lock
 from skill_delegator.models import (
@@ -79,35 +79,46 @@ def _cache_root(config: AuthorityConfig) -> Path:
 def _git_candidate(source: SourceSpec, old_revision: str, cache_root: Path) -> tuple[str, str]:
     if not isinstance(source.location, str) or not source.track:
         raise SourceError(f"git source {source.id} requires string location and tracked ref")
-    check_root = _ensure_real_cache_directory(cache_root, description="update check cache root")
-    temporary = Path(tempfile.mkdtemp(prefix=".update-check-", dir=check_root))
-    checkout = temporary / "repository"
-    try:
-        _run_git(["clone", "--quiet", "--no-checkout", "--", source.location, str(checkout)])
-        candidate = _run_git(
-            [
-                "rev-parse",
-                "--verify",
-                "--end-of-options",
-                f"{_tracked_commit_ref(source.track)}^{{commit}}",
-            ],
-            cwd=checkout,
-        )
-        if candidate == old_revision:
-            return candidate, "no-change"
-        if source.track.startswith("refs/tags/"):
-            return candidate, "tag-moved"
+    with _ensure_real_cache_directory(
+        cache_root, description="update check cache root"
+    ) as check_root:
+        check_root.verify(description="update-check-cache")
+        temporary = Path(tempfile.mkdtemp(prefix=".update-check-", dir=check_root.descriptor_path))
+        checkout = temporary / "repository"
         try:
-            _run_git(["cat-file", "-e", f"{old_revision}^{{commit}}"], cwd=checkout)
-        except SourceError:
-            return candidate, "force-moved"
-        try:
-            _run_git(["merge-base", "--is-ancestor", old_revision, candidate], cwd=checkout)
-        except SourceError:
-            return candidate, "diverged"
-        return candidate, "fast-forward"
-    finally:
-        shutil.rmtree(temporary, ignore_errors=True)
+            _run_git(["clone", "--quiet", "--no-checkout", "--", source.location, str(checkout)])
+            candidate = _run_git(
+                [
+                    "rev-parse",
+                    "--verify",
+                    "--end-of-options",
+                    f"{_tracked_commit_ref(source.track)}^{{commit}}",
+                ],
+                cwd=checkout,
+            )
+            if candidate == old_revision:
+                relation = "no-change"
+            elif source.track.startswith("refs/tags/"):
+                relation = "tag-moved"
+            else:
+                try:
+                    _run_git(["cat-file", "-e", f"{old_revision}^{{commit}}"], cwd=checkout)
+                except SourceError:
+                    relation = "force-moved"
+                else:
+                    try:
+                        _run_git(
+                            ["merge-base", "--is-ancestor", old_revision, candidate],
+                            cwd=checkout,
+                        )
+                    except SourceError:
+                        relation = "diverged"
+                    else:
+                        relation = "fast-forward"
+            check_root.verify(description="update-check-cache")
+            return candidate, relation
+        finally:
+            shutil.rmtree(temporary, ignore_errors=True)
 
 
 def check_updates(config: AuthorityConfig, lock: SkillLock) -> tuple[SourceUpdate, ...]:
@@ -140,7 +151,7 @@ def _selected_lock(source: SourceSpec, config: AuthorityConfig) -> LockedSource:
     return build_lock(selected_config, resolved).sources[0]
 
 
-def prepare_update(
+def _prepare_update(
     source_id: str, config: AuthorityConfig, old_lock: SkillLock
 ) -> LockUpdateProposal:
     """Resolve and fully validate one selected source as an immutable lock proposal."""
@@ -209,6 +220,22 @@ def prepare_update(
         tuple(sorted(ungranted)),
         tuple(sorted(removed)),
     )
+
+
+def prepare_update(
+    source_id: str, config: AuthorityConfig, old_lock: SkillLock
+) -> LockUpdateProposal:
+    """Prepare one update while translating internals to a bounded public error."""
+
+    configured_ids = {source.id for source in config.sources}
+    if source_id not in configured_ids:
+        raise UpdateError("unknown source")
+    try:
+        return _prepare_update(source_id, config, old_lock)
+    except UpdateError:
+        raise
+    except (SourceError, ResolutionError, OSError, UnicodeError, ValueError) as error:
+        raise UpdateError(f"source {source_id} candidate-invalid") from error
 
 
 def proposal_document(proposal: LockUpdateProposal) -> dict[str, object]:

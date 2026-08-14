@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 import yaml
 
 from skill_delegator.config import load_config
-from skill_delegator.errors import ConfigError, SourceError
+from skill_delegator.errors import ConfigError, SourceError, UpdateError
 from skill_delegator.lockfile import build_lock, write_lock_atomic
 from skill_delegator.managed_state import TargetStateError, scan_target
 from skill_delegator.models import (
@@ -264,11 +264,30 @@ def main(argv: Sequence[str] | None = None) -> int:
                 candidate = proposal.candidate_lock
                 proposals.append(proposal)
             write_lock_atomic(config_dir / "skill-lock.yaml", candidate)
-        except (ConfigError, ResolutionError, SourceError) as error:
+        except UpdateError as error:
             print(f"Update blocked: {error}", file=sys.stderr)
             return 3
-        except OSError as error:
-            print(f"Update blocked: lock publication failed: {str(error)[:500]}", file=sys.stderr)
+        except SourceError as error:
+            code = (
+                str(error)
+                if str(error) in {"lock-publication-failed", "lock-rollback-unsafe"}
+                else "source-invalid"
+            )
+            print(f"Update blocked: {code}", file=sys.stderr)
+            return 3
+        except (
+            ConfigError,
+            ResolutionError,
+            OSError,
+            UnicodeError,
+            ValueError,
+            KeyError,
+            TypeError,
+        ):
+            print("Update blocked: configuration-invalid", file=sys.stderr)
+            return 3
+        except Exception:  # noqa: BLE001 - final CLI disclosure boundary
+            print("Update blocked: internal-error", file=sys.stderr)
             return 3
         if args.json:
             document = {"proposals": [proposal_document(item) for item in proposals]}

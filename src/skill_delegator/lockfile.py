@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-import tempfile
+import secrets
+import stat
 from pathlib import Path, PurePosixPath
 
 import yaml
@@ -16,6 +17,7 @@ from skill_delegator.models import (
     ResolvedSource,
     SkillLock,
 )
+from skill_delegator.safe_paths import AnchoredDirectory, open_anchored_directory
 
 
 def build_lock(config: AuthorityConfig, resolved_sources: tuple[ResolvedSource, ...]) -> SkillLock:
@@ -128,50 +130,138 @@ def serialize_lock(lock: SkillLock) -> bytes:
     return text.encode("utf-8")
 
 
-def write_lock_atomic(path: Path, lock: SkillLock) -> None:
-    """Atomically replace ``path`` with canonical lock bytes.
+def _read_file_at(parent: AnchoredDirectory, name: str) -> tuple[bytes, os.stat_result] | None:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(name, flags, dir_fd=parent.fd)
+    except FileNotFoundError:
+        return None
+    try:
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise OSError("lock is not a regular file")
+        chunks: list[bytes] = []
+        while chunk := os.read(fd, 65536):
+            chunks.append(chunk)
+        return b"".join(chunks), metadata
+    finally:
+        os.close(fd)
 
-    An identical existing file is left untouched, avoiding needless metadata and
-    Git worktree churn on repeated lock generation.
-    """
+
+def _unique_name(prefix: str) -> str:
+    return f".{prefix}-{secrets.token_hex(12)}"
+
+
+def _rollback_publication(
+    parent: AnchoredDirectory,
+    name: str,
+    backup: str | None,
+    published_identity: tuple[int, int],
+) -> None:
+    try:
+        current = os.stat(name, dir_fd=parent.fd, follow_symlinks=False)
+    except OSError as error:
+        raise SourceError("lock-rollback-unsafe") from error
+    if not stat.S_ISREG(current.st_mode) or (current.st_dev, current.st_ino) != published_identity:
+        raise SourceError("lock-rollback-unsafe")
+    try:
+        if backup is None:
+            os.unlink(name, dir_fd=parent.fd)
+        else:
+            os.replace(backup, name, src_dir_fd=parent.fd, dst_dir_fd=parent.fd)
+        os.fsync(parent.fd)
+    except OSError as error:
+        raise SourceError("lock-publication-failed") from error
+
+
+def write_lock_atomic(path: Path, lock: SkillLock) -> None:
+    """Publish canonical lock bytes, rolling back every reported publication failure."""
 
     payload = serialize_lock(lock)
+    parent = open_anchored_directory(path.parent, description="lock-parent")
+    stage: str | None = None
+    backup: str | None = None
+    published_identity: tuple[int, int] | None = None
+    committed = False
     try:
-        if path.read_bytes() == payload:
+        existing = _read_file_at(parent, path.name)
+        if existing is not None and existing[0] == payload:
             return
-    except FileNotFoundError:
-        pass
-    except OSError as error:
-        raise SourceError(f"cannot read existing lock {path}: {error}") from error
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    mode = 0o644
-    try:
-        mode = path.stat().st_mode & 0o777
-    except FileNotFoundError:
-        pass
-    temporary_name: str | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="wb", prefix=f".{path.name}.", dir=path.parent, delete=False
-        ) as temporary:
-            temporary_name = temporary.name
-            temporary.write(payload)
-            temporary.flush()
-            os.fsync(temporary.fileno())
-        os.chmod(temporary_name, mode)
-        os.replace(temporary_name, path)
-        temporary_name = None
-        directory_fd = os.open(path.parent, os.O_RDONLY)
+        mode = stat.S_IMODE(existing[1].st_mode) if existing is not None else 0o644
+        stage = _unique_name(f"{path.name}.stage")
+        stage_fd = os.open(
+            stage,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0),
+            mode,
+            dir_fd=parent.fd,
+        )
         try:
-            os.fsync(directory_fd)
+            view = memoryview(payload)
+            while view:
+                written = os.write(stage_fd, view)
+                if written <= 0:
+                    raise OSError("short lock write")
+                view = view[written:]
+            os.fsync(stage_fd)
+            staged = os.fstat(stage_fd)
+            if not stat.S_ISREG(staged.st_mode):
+                raise OSError("staged lock is not regular")
         finally:
-            os.close(directory_fd)
+            os.close(stage_fd)
+        os.chmod(stage, mode, dir_fd=parent.fd, follow_symlinks=False)
+        parent.verify(description="lock-parent")
+
+        if existing is not None:
+            backup = _unique_name(f"{path.name}.backup")
+            os.link(
+                path.name,
+                backup,
+                src_dir_fd=parent.fd,
+                dst_dir_fd=parent.fd,
+                follow_symlinks=False,
+            )
+            current = os.stat(path.name, dir_fd=parent.fd, follow_symlinks=False)
+            if (current.st_dev, current.st_ino) != (existing[1].st_dev, existing[1].st_ino):
+                raise OSError("lock changed before publication")
+
+        os.replace(stage, path.name, src_dir_fd=parent.fd, dst_dir_fd=parent.fd)
+        stage = None
+        published_identity = (staged.st_dev, staged.st_ino)
+        published = os.stat(path.name, dir_fd=parent.fd, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(published.st_mode)
+            or (published.st_dev, published.st_ino) != published_identity
+        ):
+            raise SourceError("lock-rollback-unsafe")
+        os.fsync(parent.fd)
+        parent.verify(description="lock-parent")
+        committed = True
+    except SourceError:
+        if published_identity is not None:
+            _rollback_publication(parent, path.name, backup, published_identity)
+            backup = None
+        raise
     except OSError as error:
-        raise SourceError(f"cannot atomically write lock {path}: {error}") from error
-    finally:
-        if temporary_name is not None:
+        if published_identity is not None:
             try:
-                os.unlink(temporary_name)
-            except FileNotFoundError:
+                _rollback_publication(parent, path.name, backup, published_identity)
+                backup = None
+            except SourceError as rollback_error:
+                raise rollback_error from error
+        raise SourceError("lock-publication-failed") from error
+    finally:
+        if stage is not None:
+            try:
+                os.unlink(stage, dir_fd=parent.fd)
+            except OSError:
                 pass
+        if backup is not None and (committed or published_identity is None):
+            # Publication is durable (or never happened). Cleanup failure must
+            # not create a contradictory reported failure. On unsafe rollback,
+            # retain the backup as a recovery journal.
+            try:
+                os.unlink(backup, dir_fd=parent.fd)
+                os.fsync(parent.fd)
+            except OSError:
+                pass
+        parent.close()

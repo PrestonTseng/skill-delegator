@@ -18,6 +18,7 @@ from skill_delegator.inventory import (
     validate_source_tree,
 )
 from skill_delegator.models import AuthorityConfig, ResolvedSkill, ResolvedSource, SourceSpec
+from skill_delegator.safe_paths import AnchoredDirectory, open_anchored_directory
 
 _GIT_TIMEOUT_SECONDS = 30
 _MAX_GIT_ERROR_CHARS = 2000
@@ -45,72 +46,56 @@ def _run_git(args: list[str], *, cwd: Path | None = None) -> str:
     return result.stdout.strip()
 
 
-def _ensure_real_cache_directory(path: Path, *, description: str) -> Path:
-    """Create and validate one managed cache directory without following a symlink."""
+def _ensure_real_cache_directory(path: Path, *, description: str) -> AnchoredDirectory:
+    """Create/traverse a cache path descriptor-relative without following links."""
+
+    return open_anchored_directory(path, description=description.replace(" ", "-"))
+
+
+def _existing_cache_entry(cache: AnchoredDirectory, name: str, expected_hash: str) -> bool:
+    """Validate one cache key through its retained source-cache descriptor."""
 
     try:
-        path.mkdir(parents=True, exist_ok=True)
-        metadata = path.lstat()
-    except OSError as error:
-        detail = str(error)[:_MAX_OS_ERROR_CHARS]
-        raise SourceError(f"cannot prepare {description} {path}: {detail}") from error
-    if stat.S_ISLNK(metadata.st_mode):
-        raise SourceError(f"{description} must not be a symlink: {path}")
-    if not stat.S_ISDIR(metadata.st_mode):
-        raise SourceError(f"{description} is not a directory: {path}")
-    return path
-
-
-def _existing_cache_entry(destination: Path, cache_root: Path, expected_hash: str) -> bool:
-    """Validate a cache key using lstat and resolved confinement, or report it absent."""
-
-    try:
-        metadata = destination.lstat()
+        metadata = os.stat(name, dir_fd=cache.fd, follow_symlinks=False)
     except FileNotFoundError:
         return False
     except OSError as error:
         detail = str(error)[:_MAX_OS_ERROR_CHARS]
-        raise SourceError(
-            f"cannot inspect content-addressed cache entry {destination}: {detail}"
-        ) from error
+        raise SourceError(f"cannot inspect content-addressed cache entry: {detail}") from error
     if stat.S_ISLNK(metadata.st_mode):
-        raise SourceError(f"content-addressed cache entry must not be a symlink: {destination}")
+        raise SourceError("content-addressed cache entry must not be a symlink")
     if not stat.S_ISDIR(metadata.st_mode):
-        raise SourceError(f"content-addressed cache entry is corrupt: {destination}")
-    try:
-        resolved_destination = destination.resolve(strict=True)
-        resolved_cache_root = cache_root.resolve(strict=True)
-    except OSError as error:
-        detail = str(error)[:_MAX_OS_ERROR_CHARS]
-        raise SourceError(
-            f"cannot resolve content-addressed cache entry {destination}: {detail}"
-        ) from error
-    if not resolved_destination.is_relative_to(resolved_cache_root):
-        raise SourceError(f"content-addressed cache entry is not confined: {destination}")
+        raise SourceError("content-addressed cache entry is corrupt")
+    destination = cache.descriptor_path / name
     validate_source_tree(destination)
     if hash_tree(destination) != expected_hash:
-        raise SourceError(f"content-addressed cache entry is corrupt: {destination}")
+        raise SourceError("content-addressed cache entry is corrupt")
+    cache.verify(description="content-addressed-cache")
     return True
 
 
-def _source_cache_root(cache_root: Path, source_id: str) -> tuple[Path, Path]:
+def _source_cache_root(cache_root: Path, source_id: str) -> AnchoredDirectory:
     lexical_root = Path(os.path.abspath(cache_root))
     if Path(source_id).parts != (source_id,) or source_id in {"", ".", ".."}:
         raise SourceError(f"source id cannot form a confined cache path: {source_id!r}")
-    _ensure_real_cache_directory(lexical_root, description="content-addressed cache root")
-    source_cache = lexical_root / source_id
-    _ensure_real_cache_directory(source_cache, description="source cache directory")
-    if not source_cache.resolve(strict=True).is_relative_to(lexical_root.resolve(strict=True)):
-        raise SourceError(f"source cache directory is not confined: {source_cache}")
-    return lexical_root, source_cache
+    cache = _ensure_real_cache_directory(lexical_root, description="content-addressed cache root")
+    try:
+        cache.open_child(source_id, description="cache-source-directory")
+        cache.verify(description="content-addressed-cache")
+    except Exception:
+        cache.close()
+        raise
+    return cache
 
 
 def _cache_snapshot(
-    source_root: Path, destination: Path, expected_hash: str, cache_root: Path
+    source_root: Path, cache: AnchoredDirectory, cache_key: str, expected_hash: str
 ) -> Path:
-    if _existing_cache_entry(destination, cache_root, expected_hash):
-        return destination
-    staging = Path(tempfile.mkdtemp(prefix=".snapshot-", dir=destination.parent))
+    if _existing_cache_entry(cache, cache_key, expected_hash):
+        return cache.descriptor_path / cache_key
+    cache.verify(description="content-addressed-cache")
+    staging = Path(tempfile.mkdtemp(prefix=".snapshot-", dir=cache.descriptor_path))
+    destination = cache.descriptor_path / cache_key
     try:
         shutil.rmtree(staging)
         shutil.copytree(source_root, staging, symlinks=True, ignore=shutil.ignore_patterns(".git"))
@@ -126,18 +111,18 @@ def _cache_snapshot(
                     f"cannot publish content-addressed cache entry: {detail}"
                 ) from error
             try:
-                valid_race_entry = _existing_cache_entry(destination, cache_root, expected_hash)
-            except SourceError as validation_error:
+                valid_race_entry = _existing_cache_entry(cache, cache_key, expected_hash)
+            except SourceError:
                 raise SourceError(
-                    f"content-addressed cache race produced corrupt entry: {destination}: "
-                    f"{validation_error}"
+                    "content-addressed cache race produced corrupt entry: validation-failed"
                 ) from error
             if not valid_race_entry:
                 raise SourceError(
-                    f"content-addressed cache race did not produce an entry: {destination}"
+                    "content-addressed cache race did not produce an entry"
                 ) from error
-        if not _existing_cache_entry(destination, cache_root, expected_hash):
-            raise SourceError(f"published content-addressed cache entry disappeared: {destination}")
+        if not _existing_cache_entry(cache, cache_key, expected_hash):
+            raise SourceError("published content-addressed cache entry disappeared")
+        cache.verify(description="content-addressed-cache")
         return destination
     finally:
         if staging.exists():
@@ -172,16 +157,20 @@ def _resolve_filesystem(source: SourceSpec, cache_root: Path) -> ResolvedSource:
     validate_snapshot_tree(source.location)
     discover_skills(source.location, source.skill_root)
     revision = hash_tree(source.location)
-    lexical_cache_root, source_cache = _source_cache_root(cache_root, source.id)
-    destination = source_cache / revision
-    snapshot = _cache_snapshot(source.location, destination, revision, lexical_cache_root)
+    cache = _source_cache_root(cache_root, source.id)
+    try:
+        snapshot = _cache_snapshot(source.location, cache, revision, revision)
+        skills = _resolved_skills(source, snapshot)
+        cache.verify(description="content-addressed-cache")
+    finally:
+        cache.close()
     return ResolvedSource(
         source_id=source.id,
         source_type=source.type,
         location=str(source.location),
         revision=revision,
-        root=snapshot,
-        skills=_resolved_skills(source, snapshot),
+        root=Path(os.path.abspath(cache_root)) / source.id / revision,
+        skills=skills,
     )
 
 
@@ -223,16 +212,19 @@ def _resolve_git(source: SourceSpec, cache_root: Path) -> ResolvedSource:
         validate_snapshot_tree(checkout)
         discover_skills(checkout, source.skill_root)
         tree_hash = hash_tree(checkout)
-        lexical_cache_root, source_cache = _source_cache_root(cache_root, source.id)
-        destination = source_cache / revision
-        snapshot = _cache_snapshot(checkout, destination, tree_hash, lexical_cache_root)
-        skills = _resolved_skills(source, snapshot)
+        cache = _source_cache_root(cache_root, source.id)
+        try:
+            snapshot = _cache_snapshot(checkout, cache, revision, tree_hash)
+            skills = _resolved_skills(source, snapshot)
+            cache.verify(description="content-addressed-cache")
+        finally:
+            cache.close()
         return ResolvedSource(
             source_id=source.id,
             source_type=source.type,
             location=source.location,
             revision=revision,
-            root=snapshot,
+            root=Path(os.path.abspath(cache_root)) / source.id / revision,
             skills=skills,
         )
     finally:
