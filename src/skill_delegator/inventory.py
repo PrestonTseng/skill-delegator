@@ -130,6 +130,14 @@ def _frontmatter(path: Path) -> tuple[str, str]:
     return name, description
 
 
+def inspect_skill(skill_directory: Path) -> SkillArtifact:
+    """Freshly validate one exact skill directory and return metadata/content identity."""
+
+    root = validate_source_tree(skill_directory)
+    name, description = _frontmatter(root / "SKILL.md")
+    return SkillArtifact(PurePosixPath("."), name, description, hash_tree(root))
+
+
 def _filesystem_bytes(value: str | os.PathLike[str], label: str) -> bytes:
     try:
         return os.fsencode(value)

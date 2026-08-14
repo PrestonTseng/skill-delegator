@@ -216,3 +216,71 @@ class ReconciliationPlan:
         return any(
             operation.action in {"CREATE", "REPLACE", "REMOVE"} for operation in self.operations
         )
+
+
+@dataclass(frozen=True)
+class VerificationReason:
+    """One bounded, deterministic verification finding."""
+
+    code: str
+    category: str
+    target_id: str | None
+    artifact_id: str | None
+    detail: str
+
+
+@dataclass(frozen=True)
+class TargetFingerprint:
+    """Content identity of one freshly observed target."""
+
+    target_id: str
+    sha256: str
+
+
+@dataclass(frozen=True)
+class ConfigFileHash:
+    """Byte identity of one desired-state input file."""
+
+    name: str
+    sha256: str
+
+
+@dataclass(frozen=True)
+class LockedSourceIdentity:
+    """Exact immutable identity recorded for a locked source."""
+
+    source_id: str
+    source_type: str
+    revision_kind: str
+    revision: str
+    tree_identity: str | None
+
+
+@dataclass(frozen=True)
+class OperationSummary:
+    """Deterministic aggregate of desired and freshly verified state."""
+
+    desired_targets: int
+    desired_links: int
+    verified_links: int
+    drift_count: int
+    invalid_count: int
+
+
+@dataclass(frozen=True)
+class VerificationResult:
+    """Immutable verification evidence, suitable for deterministic receipts."""
+
+    result: str
+    reasons: tuple[VerificationReason, ...]
+    target_fingerprints: tuple[TargetFingerprint, ...]
+    operation_summary: OperationSummary
+    authority_id: str = "unbound"
+    repository_commit: str | None = None
+    repository_commit_available: bool = False
+    config_hashes: tuple[ConfigFileHash, ...] = ()
+    locked_sources: tuple[LockedSourceIdentity, ...] = ()
+
+    @property
+    def converged(self) -> bool:
+        return self.result == "converged"

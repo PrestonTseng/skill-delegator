@@ -25,9 +25,11 @@ from skill_delegator.models import (
     SkillLock,
 )
 from skill_delegator.planner import build_plan, plan_json, plan_text
+from skill_delegator.receipts import ReceiptError, receipt_document, write_receipt
 from skill_delegator.reconciler import ApplyError, apply_plan
 from skill_delegator.resolver import ResolutionError, resolve_desired_state
 from skill_delegator.source_store import resolve_sources
+from skill_delegator.verifier import bind_verification_evidence, verify_state
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,6 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     apply.add_argument("--yes", action="store_true", help="confirm plans containing REMOVE")
     apply.add_argument("--lock-timeout", type=float, default=5.0, metavar="SECONDS")
+    verify = subparsers.add_parser("verify", help="freshly verify state and write an audit receipt")
+    verify.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
+    status = subparsers.add_parser("status", help="freshly report state without writing a receipt")
+    status.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
+    status.add_argument("--json", action="store_true")
     return parser
 
 
@@ -120,6 +127,41 @@ def _bind_expected_sources(state: DesiredState, lock: SkillLock, cache_root: Pat
 
 def _render_plan(plan: ReconciliationPlan, *, json_output: bool) -> None:
     sys.stdout.write(plan_json(plan) if json_output else plan_text(plan))
+
+
+def _fresh_verification(config_dir: Path):
+    config_dir = config_dir.resolve(strict=False)
+    config = load_config(config_dir)
+    lock = _load_validated_lock(config_dir)
+    desired = resolve_desired_state(config, lock)
+    cache_root = config_dir.parent / "var" / "cache" / "sources"
+    desired = _bind_expected_sources(desired, lock, cache_root)
+    result = verify_state(desired, CurrentState((), cache_root))
+    return bind_verification_evidence(result, config_dir, config, lock)
+
+
+def _render_verification(result, *, json_output: bool) -> None:
+    if json_output:
+        print(json.dumps(receipt_document(result), sort_keys=True, separators=(",", ":")))
+        return
+    summary = result.operation_summary
+    target_word = "target" if summary.desired_targets == 1 else "targets"
+    print(
+        f"{result.result}: {summary.verified_links}/{summary.desired_links} links verified "
+        f"across {summary.desired_targets} {target_word}"
+    )
+    for reason in result.reasons:
+        location = "/".join(
+            part for part in (reason.target_id, reason.artifact_id) if part is not None
+        )
+        suffix = f" {location}" if location else ""
+        print(f"- {reason.code}{suffix}")
+
+
+def _verification_exit_code(result) -> int:
+    if result.result == "converged":
+        return 0
+    return 1 if result.result == "drift" else 3
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -220,6 +262,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             target_word = "target" if result.targets == 1 else "targets"
             print(f"Applied {result.changed} {change_word} to {result.targets} {target_word}")
         return 0
+    if args.command in {"verify", "status"}:
+        label = "Verify" if args.command == "verify" else "Status"
+        try:
+            result = _fresh_verification(args.config)
+        except (ConfigError, OSError, ResolutionError, ValueError) as error:
+            print(f"{label} error: {error}", file=sys.stderr)
+            return 2
+        if args.command == "status":
+            _render_verification(result, json_output=args.json)
+            return _verification_exit_code(result)
+        try:
+            receipt = write_receipt(
+                result, args.config.resolve(strict=False).parent / "var" / "receipts"
+            )
+        except ReceiptError as error:
+            print(f"Verify blocked: {error}", file=sys.stderr)
+            return 3
+        _render_verification(result, json_output=False)
+        print(f"receipt: {receipt}")
+        return _verification_exit_code(result)
     return 2
 
 

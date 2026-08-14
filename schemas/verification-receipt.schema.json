@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-delegator.local/schemas/verification-receipt.schema.json",
+  "title": "Skill Delegator verification audit receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "authority_id", "repository", "config_hashes", "locked_sources", "operation_summary", "result", "reasons", "target_fingerprints"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "authority_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "commit"],
+      "properties": {
+        "available": {"type": "boolean"},
+        "commit": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40,64}$"}
+      },
+      "allOf": [
+        {"if": {"properties": {"available": {"const": true}}}, "then": {"properties": {"commit": {"type": "string"}}}},
+        {"if": {"properties": {"available": {"const": false}}}, "then": {"properties": {"commit": {"const": null}}}}
+      ]
+    },
+    "config_hashes": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "sha256"],
+        "properties": {
+          "name": {"enum": ["authority.yaml", "delegations.yaml", "pool.yaml", "skill-lock.yaml", "sources.yaml"]},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "locked_sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_id", "type", "revision_kind", "revision", "tree_identity"],
+        "properties": {
+          "source_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "type": {"enum": ["git", "filesystem"]},
+          "revision_kind": {"enum": ["resolved_commit", "tree_hash"]},
+          "revision": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+          "tree_identity": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40,64}$"}
+        },
+        "allOf": [
+          {"if": {"properties": {"revision_kind": {"const": "resolved_commit"}}}, "then": {"properties": {"tree_identity": {"const": null}}}},
+          {"if": {"properties": {"revision_kind": {"const": "tree_hash"}}}, "then": {"properties": {"tree_identity": {"type": "string"}}}}
+        ]
+      }
+    },
+    "operation_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["desired_targets", "desired_links", "verified_links", "drift_count", "invalid_count"],
+      "properties": {
+        "desired_targets": {"type": "integer", "minimum": 0},
+        "desired_links": {"type": "integer", "minimum": 0},
+        "verified_links": {"type": "integer", "minimum": 0},
+        "drift_count": {"type": "integer", "minimum": 0},
+        "invalid_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "result": {"enum": ["converged", "drift", "invalid"]},
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "category", "target_id", "artifact_id", "detail"],
+        "properties": {
+          "code": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 80},
+          "category": {"enum": ["drift", "invalid"]},
+          "target_id": {"type": ["string", "null"], "maxLength": 128},
+          "artifact_id": {"type": ["string", "null"], "maxLength": 512},
+          "detail": {"type": "string", "maxLength": 300}
+        }
+      }
+    },
+    "target_fingerprints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target_id", "sha256"],
+        "properties": {
+          "target_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}
