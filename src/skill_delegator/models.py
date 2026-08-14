@@ -109,3 +109,30 @@ class SkillLock:
 
     schema_version: int
     sources: tuple[LockedSource, ...]
+
+
+@dataclass(frozen=True)
+class DesiredLink:
+    """One exact artifact placement in a target's desired state."""
+
+    artifact_id: str
+    runtime_name: str
+    source_path: PurePosixPath
+    target_path: Path
+    content_sha256: str
+
+
+@dataclass(frozen=True)
+class DesiredTarget:
+    """Deterministically ordered desired links for one target."""
+
+    id: str
+    root: Path
+    links: tuple[DesiredLink, ...]
+
+
+@dataclass(frozen=True)
+class DesiredState:
+    """Pure resolved desired state for an authority."""
+
+    targets: tuple[DesiredTarget, ...]
