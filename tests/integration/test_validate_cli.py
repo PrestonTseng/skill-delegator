@@ -57,3 +57,19 @@ def test_validate_rejects_invalid_utf8_without_traceback(tmp_path: Path) -> None
     assert "authority.yaml" in result.stderr
     assert "invalid UTF-8" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_validate_rejects_unhashable_yaml_mapping_key_without_traceback(
+    tmp_path: Path,
+) -> None:
+    config_dir = tmp_path / "config"
+    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    (config_dir / "authority.yaml").write_text("? [a, b]\n: c\n", encoding="utf-8")
+
+    result = run_cli(config_dir)
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "authority.yaml" in result.stderr
+    assert "unhashable mapping key" in result.stderr
+    assert "Traceback" not in result.stderr

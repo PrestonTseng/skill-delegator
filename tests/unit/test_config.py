@@ -198,3 +198,15 @@ def test_duplicate_yaml_mapping_keys_fail_at_any_depth(
         match=rf"{filename.replace('.', r'\.')}: invalid YAML:.*duplicate mapping key",
     ):
         load_config(config_dir)
+
+
+def test_unhashable_yaml_mapping_key_is_filename_bearing_config_error(tmp_path: Path) -> None:
+    config_dir = copy_config(tmp_path)
+    (config_dir / "authority.yaml").write_text("? [a, b]\n: c\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(config_dir)
+
+    message = str(exc_info.value)
+    assert message.startswith("authority.yaml: invalid YAML:")
+    assert "unhashable mapping key" in message
