@@ -12,6 +12,13 @@ from skill_delegator.errors import ConfigError
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 EXAMPLE_CONFIG = REPOSITORY_ROOT / "config"
+CONFIG_FILENAMES = (
+    "authority.yaml",
+    "sources.yaml",
+    "pool.yaml",
+    "delegations.yaml",
+    "skill-lock.yaml",
+)
 
 
 def copy_config(tmp_path: Path) -> Path:
@@ -100,4 +107,94 @@ def test_malformed_grants_fail(tmp_path: Path, bad_grants: object) -> None:
     rewrite_yaml(config_dir, "delegations.yaml", replace_grants)
 
     with pytest.raises(ConfigError, match=r"delegations\.yaml"):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize("filename", ("pool.yaml", "delegations.yaml"))
+@pytest.mark.parametrize(
+    "bad_canonical_id",
+    (
+        "",
+        ".",
+        "..",
+        "example/",
+        "example/a/",
+        "example/a//b",
+        "example/a/./b",
+        "example/a/../b",
+        "example/a/../../outside",
+    ),
+)
+def test_canonical_skill_ids_reject_malformed_path_segments(
+    tmp_path: Path, filename: str, bad_canonical_id: str
+) -> None:
+    config_dir = copy_config(tmp_path)
+
+    def replace_canonical_id(document: dict[str, object]) -> None:
+        if filename == "pool.yaml":
+            document["skills"] = [bad_canonical_id]
+        else:
+            targets = document["targets"]
+            assert isinstance(targets, list)
+            targets[0]["grants"] = [bad_canonical_id]
+
+    rewrite_yaml(config_dir, filename, replace_canonical_id)
+
+    with pytest.raises(
+        ConfigError,
+        match=rf"{filename.replace('.', r'\.')}: invalid canonical skill id",
+    ):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize("symlink_component", ("example-targets", "worker"))
+def test_main_example_rejects_existing_symlink_in_target_path(
+    tmp_path: Path, symlink_component: str
+) -> None:
+    config_dir = copy_config(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    safe_parent_parent = tmp_path / "var"
+    safe_parent_parent.mkdir()
+
+    if symlink_component == "example-targets":
+        (safe_parent_parent / "example-targets").symlink_to(outside, target_is_directory=True)
+    else:
+        safe_parent = safe_parent_parent / "example-targets"
+        safe_parent.mkdir()
+        (safe_parent / "worker").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ConfigError, match=r"target path must not contain symlinks"):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize("filename", CONFIG_FILENAMES)
+def test_invalid_utf8_is_filename_bearing_config_error(tmp_path: Path, filename: str) -> None:
+    config_dir = copy_config(tmp_path)
+    (config_dir / filename).write_bytes(b"\xff")
+
+    with pytest.raises(ConfigError, match=rf"{filename.replace('.', r'\.')}.*invalid UTF-8"):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize(
+    ("filename", "content"),
+    (
+        ("authority.yaml", "schema_version: 1\nschema_version: 1\n"),
+        (
+            "delegations.yaml",
+            "schema_version: 1\ntargets:\n  - id: worker\n    id: duplicate\n",
+        ),
+    ),
+)
+def test_duplicate_yaml_mapping_keys_fail_at_any_depth(
+    tmp_path: Path, filename: str, content: str
+) -> None:
+    config_dir = copy_config(tmp_path)
+    (config_dir / filename).write_text(content, encoding="utf-8")
+
+    with pytest.raises(
+        ConfigError,
+        match=rf"{filename.replace('.', r'\.')}: invalid YAML:.*duplicate mapping key",
+    ):
         load_config(config_dir)
