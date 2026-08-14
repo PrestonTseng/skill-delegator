@@ -2,11 +2,12 @@
 
 ## Status
 
-`DONE_WITH_CONCERNS` for the generic Gate A release candidate. The release-hardening implementation, regressions, documentation, package artifacts, and an offline installed-wheel smoke are complete. Authority branches, real authority configuration/targets/apply, GitHub operations, external network access, `/opt/knowledge`, and credentials remained excluded. A fresh independent post-fix security verdict is still outside this worker.
+`DONE_WITH_CONCERNS` for the generic Gate A release candidate. The final bounded receipt, evidence, schema-anchor, documentation, and ancestor-race closure is implemented and freshly verified. Authority branches, real authority configuration/targets/apply, GitHub operations, external network access, `/opt/knowledge`, and credentials remained excluded. A fresh independent post-fix security verdict is still outside this worker.
 
 - Hardening base: `b92927770841b52d2ba3178035fdcf48dec3c536`
+- Final closure base: `6c73d3af9c9f4ae2bca568861d80dc5f6a344492`
 - Branch: `feat/skill-delegator-v1`
-- Commit message: `fix: harden skill delegator v1 release evidence`
+- Final closure commit message: `fix: close v1 release evidence gaps`
 
 ## Original and review RED evidence
 
@@ -49,6 +50,20 @@ It also identified stale release claims: POSIX/Linux-only implementation metadat
 
 On this continuation's first untouched full-suite run, the exact result was `315 passed, 6 failed in 23.89s`. All six were integration expectations made stale by the already-implemented stricter contracts: canonical schema rejection order/UTF-8 diagnostics, the former Unicode discovery allowance, and receipts that formerly permitted Git without snapshot evidence. No production contract was weakened to clear them.
 
+## Final focused closure RED/GREEN
+
+The final Gate A closure review rejected `6c73d3af9c9f4ae2bca568861d80dc5f6a344492` for four bounded defects. Regression tests were added before production changes. The first focused run produced the expected RED result: `10 failed, 18 passed in 0.28s`. Failures proved that drift still emitted a receipt, the public writer accepted drift/invalid and absent or mismatching source-tree evidence, and direct Draft 2020-12 validation accepted trailing newline values in lock/pool/delegation canonical fields. The corrected ancestor-swap regressions already passed while now proving the configured lexical source actually resolves to distinguishable outside content after the swap.
+
+The minimal implementation then produced GREEN: `28 passed in 0.22s`; the expanded changed-area suite produced `180 passed in 1.08s`. Exact closure semantics are:
+
+- `verify` renders the same deterministic drift/invalid status and bounded exit as `status`, but neither non-converged outcome invokes receipt publication or creates `var/receipts`; `status` remains byte-for-byte read-only.
+- Receipt publication requires `result == converged`. Its semantic gate requires one fresh `SourceTreeEvidence` per locked source and exact equality with each receipt tree identity.
+- Git receipt `revision` remains the exact locked resolved commit. Its `tree_identity` is assigned from the lock's `tree_hash`, never from a mismatching observation. A converged binding rejects any fresh observed tree that differs from that locked hash. Filesystem revision/tree identity remains the locked tree hash.
+- A real local/offline Git CLI regression adds ungranted cached content, observes verify/status drift exit `1` with zero receipt files and no status writes, restores the bytes, then observes one converged receipt whose commit and tree identity exactly match the lock.
+- Lock `canonical_id`/`path` plus pool/delegation canonical fields explicitly reject every ASCII control (`U+0000`–`U+001F`, `U+007F`) in addition to the established grammar. Direct Draft 2020-12 regressions include trailing LF, CR, NUL, unit separator, and DEL.
+- Architecture documentation now distinguishes filesystem cache keys (snapshot tree hash) from Git cache keys (resolved commit), while stating that both locks carry the complete snapshot tree hash.
+- The ancestor replacement test redirects the lexical source to the prepared outside source, asserts the swap and distinguishable outside runtime/content, and proves resolution rejects the identity change without publishing outside bytes or a corresponding cache entry.
+
 ## Final schema and evidence contract
 
 - Filesystem source resolution retains existing-directory descriptors and inode identities through snapshot validation/copying; changed final or ancestor pathname components cannot redirect published cache content.
@@ -62,7 +77,7 @@ On this continuation's first untouched full-suite run, the exact result was `315
 - Source docs use `docs/configuration.md`; installed-wheel docs use `skill_delegator/docs/configuration.md`.
 - Generated-state documentation names only `var/cache/`, `var/example-targets/`, and `var/receipts/` as ignored.
 
-## Final fresh source gates
+## Prior release-hardening source gates
 
 All commands were rerun after formatting/import fixes against the final pre-commit bytes:
 
@@ -101,6 +116,42 @@ uv run --frozen pytest -q tests/integration/test_schema_artifacts.py
 ```
 
 The focused release suite included the main example, path escape, unmanaged preservation, lock tampering, artifact package test, and changed lockfile/verifier/config/reconciler/platform suites.
+
+## Final closure fresh gates
+
+All final commands used the locked environment and Python 3.12 where applicable:
+
+```text
+uv lock --check && uv sync --locked --python 3.12
+resolved 15 packages; checked 14 packages
+
+uv run --frozen --python 3.12 ruff format --check .
+52 files already formatted
+
+uv run --frozen --python 3.12 ruff check .
+All checks passed!
+
+changed-area focused suite
+180 passed in 1.06s
+
+uv run --frozen --python 3.12 pytest -q
+352 passed in 22.71s
+
+uv run --frozen --python 3.12 python -m compileall -q src tests
+exit 0
+
+uv run --frozen --python 3.12 skillctl validate
+Valid configuration: 1 authority, 1 source, 1 pool entry, 2 targets
+
+uv build
+Successfully built dist/skill_delegator-0.1.0.tar.gz
+Successfully built dist/skill_delegator-0.1.0-py3-none-any.whl
+
+uv run --frozen --python 3.12 pytest -q tests/integration/test_schema_artifacts.py
+1 passed in 0.83s
+```
+
+The freshly installed wheel smoke used Python `3.12.13`, resolved all dependencies offline, exposed all eight commands, and passed two rounds: `CREATE,CREATE` then `KEEP,KEEP`; two managed symlinks; one deterministic receipt; converged read-only status; unchanged target/cache/receipt bytes on round two.
 
 ## Package and archive evidence
 

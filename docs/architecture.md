@@ -22,7 +22,7 @@ fresh desired/source/target evidence ──verify──> content-addressed recei
 
 Artifact identity is `<source-id>/<relative-path-from-skill-root>`. Runtime identity is a safe bounded `SKILL.md` frontmatter `name`; duplicate runtime identities per target fail. Artifact paths—not runtime names—determine symlink placement: `<target-root>/<artifact-id>`.
 
-Apply consumes only exact lock identities and exact skill hashes. A Git lock binds both the resolved commit and a SHA-256 tree hash computed directly over the complete locked snapshot; a filesystem lock uses that complete tree hash as its revision. Mutable Git `track` values are update inputs, never apply inputs. Cached source snapshots live at `var/cache/sources/<source-id>/<snapshot-tree-hash>/`.
+Apply consumes only exact lock identities and exact skill hashes. A Git lock binds both the resolved commit and a SHA-256 tree hash computed directly over the complete locked snapshot; a filesystem lock uses that complete tree hash as its revision. Mutable Git `track` values are update inputs, never apply inputs. Filesystem snapshots are cached at `var/cache/sources/<source-id>/<snapshot-tree-hash>/`; Git snapshots are cached at `var/cache/sources/<source-id>/<resolved-commit>/`. Both lock forms carry the complete snapshot tree hash.
 
 ## Symlink-only target model
 

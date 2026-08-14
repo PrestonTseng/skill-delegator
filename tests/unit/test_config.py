@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -7,9 +8,11 @@ from typing import Any
 
 import pytest
 import yaml
+from jsonschema import Draft202012Validator
 
 from skill_delegator.config import load_config
 from skill_delegator.errors import ConfigError
+from skill_delegator.schema_validation import schema_text
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 EXAMPLE_CONFIG = REPOSITORY_ROOT / "config"
@@ -190,9 +193,85 @@ def test_canonical_skill_ids_reject_malformed_path_segments(
 
     with pytest.raises(
         ConfigError,
-        match=rf"{filename.replace('.', r'\.')}(?: at .*does not match|: invalid canonical skill id)",
+        match=rf"{filename.replace('.', r'\.')}(?: at .*(?:does not match|should not be valid)|: invalid canonical skill id)",
     ):
         load_config(config_dir)
+
+
+@pytest.mark.parametrize(
+    ("schema_name", "document", "bad_value"),
+    (
+        (
+            "lock.schema.json",
+            {
+                "schema_version": 1,
+                "sources": [
+                    {
+                        "source_id": "example",
+                        "type": "filesystem",
+                        "tree_hash": "a" * 64,
+                        "skills": [
+                            {
+                                "canonical_id": "example/a",
+                                "runtime_name": "a",
+                                "path": "a",
+                                "sha256": "b" * 64,
+                            }
+                        ],
+                    }
+                ],
+            },
+            "canonical_id",
+        ),
+        (
+            "lock.schema.json",
+            {
+                "schema_version": 1,
+                "sources": [
+                    {
+                        "source_id": "example",
+                        "type": "filesystem",
+                        "tree_hash": "a" * 64,
+                        "skills": [
+                            {
+                                "canonical_id": "example/a",
+                                "runtime_name": "a",
+                                "path": "a",
+                                "sha256": "b" * 64,
+                            }
+                        ],
+                    }
+                ],
+            },
+            "path",
+        ),
+        ("pool.schema.json", {"schema_version": 1, "skills": ["example/a"]}, "skills"),
+        (
+            "delegations.schema.json",
+            {
+                "schema_version": 1,
+                "targets": [{"id": "worker", "root": "target", "grants": ["example/a"]}],
+            },
+            "grants",
+        ),
+    ),
+)
+@pytest.mark.parametrize("suffix", ("\n", "\r", "\x00", "\x1f", "\x7f"))
+def test_canonical_json_schemas_directly_reject_trailing_ascii_controls(
+    schema_name: str, document: dict[str, Any], bad_value: str, suffix: str
+) -> None:
+    candidate = json.loads(json.dumps(document))
+    if schema_name == "lock.schema.json":
+        skill = candidate["sources"][0]["skills"][0]
+        skill[bad_value] += suffix
+    elif bad_value == "skills":
+        candidate["skills"][0] += suffix
+    else:
+        candidate["targets"][0]["grants"][0] += suffix
+
+    errors = list(Draft202012Validator(json.loads(schema_text(schema_name))).iter_errors(candidate))
+
+    assert errors
 
 
 @pytest.mark.parametrize("symlink_component", ("example-targets", "worker"))

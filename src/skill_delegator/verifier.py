@@ -709,10 +709,14 @@ def bind_verification_evidence(
             revision = source.tree_hash
         else:
             raise ValueError(f"locked source has no immutable identity: {source.source_id}")
-        tree_identity = fresh_trees.get(source.source_id)
-        if source.tree_hash is None or tree_identity is None:
+        observed_tree = fresh_trees.get(source.source_id)
+        if source.tree_hash is None or observed_tree is None:
             raise ValueError(
                 f"locked source lacks fresh whole-snapshot evidence: {source.source_id}"
+            )
+        if result.converged and observed_tree != source.tree_hash:
+            raise ValueError(
+                f"converged source evidence differs from exact lock: {source.source_id}"
             )
         locked_sources.append(
             LockedSourceIdentity(
@@ -720,7 +724,7 @@ def bind_verification_evidence(
                 source.source_type,
                 kind,
                 revision,
-                tree_identity,
+                source.tree_hash,
             )
         )
     commit, available = _repository_commit(

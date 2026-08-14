@@ -13,6 +13,7 @@ from skill_delegator.models import (
     ConfigFileHash,
     LockedSourceIdentity,
     OperationSummary,
+    SourceTreeEvidence,
     TargetFingerprint,
     VerificationReason,
     VerificationResult,
@@ -41,6 +42,7 @@ def _result() -> VerificationResult:
             ConfigFileHash("sources.yaml", _SHA_A),
         ),
         locked_sources=(LockedSourceIdentity("source", "filesystem", "tree_hash", _SHA_B, _SHA_B),),
+        source_tree_evidence=(SourceTreeEvidence("source", _SHA_B),),
     )
 
 
@@ -105,6 +107,40 @@ def test_git_revision_requires_and_records_direct_snapshot_tree_identity() -> No
             "tree_identity": _SHA_B,
         }
     ]
+
+
+@pytest.mark.parametrize("result_name", ("drift", "invalid"))
+def test_write_receipt_rejects_non_converged_results_without_creating_root(
+    tmp_path: Path, result_name: str
+) -> None:
+    result = replace(
+        _result(),
+        result=result_name,
+        reasons=(VerificationReason("not-converged", result_name, None, None, "blocked"),),
+        operation_summary=OperationSummary(
+            1, 1, 0, int(result_name == "drift"), int(result_name == "invalid")
+        ),
+    )
+    root = tmp_path / "var" / "receipts"
+
+    with pytest.raises(ReceiptError, match="converged"):
+        write_receipt(result, root)
+
+    assert not root.exists()
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    ((), (SourceTreeEvidence("source", _SHA_A),), (SourceTreeEvidence("other", _SHA_B),)),
+)
+def test_write_receipt_rejects_missing_or_incoherent_source_tree_evidence(
+    tmp_path: Path, evidence: tuple[SourceTreeEvidence, ...]
+) -> None:
+    with pytest.raises(ReceiptError, match="source-tree evidence"):
+        write_receipt(
+            replace(_result(), source_tree_evidence=evidence),
+            tmp_path / "var" / "receipts",
+        )
 
 
 @pytest.mark.parametrize("attack", ("root-symlink", "ancestor-symlink", "root-file", "outside-var"))
@@ -348,10 +384,11 @@ def test_write_receipt_requires_coherent_converged_fingerprints_and_counts(
         with pytest.raises(ReceiptError, match="operation evidence"):
             write_receipt(result, root)
 
-    legitimate_drift = replace(
+    legitimate_drift_evidence = replace(
         _result(),
         result="drift",
         reasons=(VerificationReason("missing", "drift", "worker", "source/one", "missing"),),
         operation_summary=OperationSummary(1, 2, 1, 1, 0),
     )
-    assert write_receipt(legitimate_drift, root).exists()
+    with pytest.raises(ReceiptError, match="converged"):
+        write_receipt(legitimate_drift_evidence, root)

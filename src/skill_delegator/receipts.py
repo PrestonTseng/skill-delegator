@@ -32,6 +32,8 @@ _CONFIG_NAMES = (
 
 
 def _validate_semantics(result: VerificationResult) -> None:
+    if result.result != "converged":
+        raise ReceiptError("verification receipt requires a converged result")
     if tuple(sorted(item.name for item in result.config_hashes)) != _CONFIG_NAMES:
         raise ReceiptError("verification result has invalid config_hashes identities")
     source_ids = [item.source_id for item in result.locked_sources]
@@ -53,6 +55,15 @@ def _validate_semantics(result: VerificationResult) -> None:
         )
         if not (is_git or is_filesystem):
             raise ReceiptError("verification result has incoherent locked_sources identity")
+    evidence_ids = [item.source_id for item in result.source_tree_evidence]
+    evidence = {item.source_id: item.sha256 for item in result.source_tree_evidence}
+    locked_trees = {item.source_id: item.tree_identity for item in result.locked_sources}
+    if (
+        len(evidence_ids) != len(set(evidence_ids))
+        or set(evidence) != set(locked_trees)
+        or any(evidence[source_id] != tree_hash for source_id, tree_hash in locked_trees.items())
+    ):
+        raise ReceiptError("verification result has incoherent source-tree evidence")
     summary = result.operation_summary
     fingerprint_ids = tuple(item.target_id for item in result.target_fingerprints)
     drift_count = sum(reason.category == "drift" for reason in result.reasons)

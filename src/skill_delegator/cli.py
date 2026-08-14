@@ -390,6 +390,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "status":
             _render_verification(result, json_output=args.json)
             return _verification_exit_code(result)
+        if not result.converged:
+            _render_verification(result, json_output=False)
+            return _verification_exit_code(result)
         try:
             receipt = write_receipt(
                 result, args.config.resolve(strict=False).parent / "var" / "receipts"

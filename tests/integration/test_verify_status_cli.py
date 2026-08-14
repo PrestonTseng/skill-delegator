@@ -63,6 +63,52 @@ def _write_config(project: Path, *, initialize_git: bool = False) -> Path:
     return config
 
 
+def _write_git_config(project: Path) -> tuple[Path, str]:
+    source_repo = project / "git-source"
+    source_repo.mkdir(parents=True)
+    _git(source_repo, "init", "-q")
+    _git(source_repo, "config", "user.email", "test@example.invalid")
+    _git(source_repo, "config", "user.name", "Test")
+    skill = source_repo / "skills" / "one"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: one\ndescription: git fixture\n---\nbody\n", encoding="utf-8"
+    )
+    _git(source_repo, "add", ".")
+    _git(source_repo, "commit", "-qm", "fixture")
+    commit = _git(source_repo, "rev-parse", "HEAD")
+
+    config = project / "config"
+    config.mkdir()
+    documents = {
+        "authority.yaml": {
+            "schema_version": 1,
+            "authority": {"id": "test", "fail_closed": True, "fixture_policy": "none"},
+        },
+        "sources.yaml": {
+            "schema_version": 1,
+            "sources": [
+                {
+                    "id": "upstream",
+                    "type": "git",
+                    "location": str(source_repo),
+                    "skill_root": "skills",
+                    "track": commit,
+                }
+            ],
+        },
+        "pool.yaml": {"schema_version": 1, "skills": ["upstream/one"]},
+        "delegations.yaml": {
+            "schema_version": 1,
+            "targets": [{"id": "worker", "root": "../target", "grants": ["upstream/one"]}],
+        },
+    }
+    for filename, document in documents.items():
+        (config / filename).write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert main(["lock", "--config", str(config)]) == 0
+    return config, commit
+
+
 def _snapshot(root: Path) -> tuple[tuple[str, str, str], ...]:
     if not root.exists():
         return ()
@@ -143,6 +189,51 @@ def test_verify_distinguishes_drift_from_hostile_target_without_traceback(
     hostile = capsys.readouterr()
     assert hostile.out.startswith("invalid:")
     assert "Traceback" not in hostile.err
+
+
+def test_offline_git_ungranted_cache_tamper_never_publishes_receipt(tmp_path: Path, capsys) -> None:
+    project = tmp_path / "project"
+    config, commit = _write_git_config(project)
+    capsys.readouterr()
+    assert main(["apply", "--config", str(config)]) == 0
+    capsys.readouterr()
+    lock = yaml.safe_load((config / "skill-lock.yaml").read_text(encoding="utf-8"))
+    locked_source = lock["sources"][0]
+    snapshot = project / "var" / "cache" / "sources" / "upstream" / commit
+    tamper = snapshot / "ungranted.txt"
+    tamper.write_text("not granted to any target\n", encoding="utf-8")
+
+    assert main(["verify", "--config", str(config)]) == 1
+    verify_drift = capsys.readouterr()
+    assert verify_drift.err == ""
+    assert verify_drift.out.startswith("drift: 0/1 links verified across 1 target\n")
+    assert "source-snapshot-hash-mismatch" in verify_drift.out
+    assert "receipt:" not in verify_drift.out
+    receipts_root = project / "var" / "receipts"
+    assert not receipts_root.exists()
+    before_status = _snapshot(project / "var")
+
+    assert main(["status", "--config", str(config)]) == 1
+    status_drift = capsys.readouterr()
+    assert status_drift == verify_drift
+    assert _snapshot(project / "var") == before_status
+    assert not receipts_root.exists()
+
+    tamper.unlink()
+    assert main(["verify", "--config", str(config)]) == 0
+    converged = capsys.readouterr()
+    receipt = Path(converged.out.strip().split("receipt: ", 1)[1])
+    document = json.loads(receipt.read_text(encoding="utf-8"))
+    assert len(list(receipts_root.glob("*.json"))) == 1
+    assert document["locked_sources"] == [
+        {
+            "source_id": "upstream",
+            "type": "git",
+            "revision_kind": "resolved_commit",
+            "revision": commit,
+            "tree_identity": locked_source["tree_hash"],
+        }
+    ]
 
 
 def test_receipt_hashes_exact_config_and_lock_bytes_and_captures_detached_commit(

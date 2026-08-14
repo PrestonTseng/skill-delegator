@@ -101,8 +101,11 @@ def test_filesystem_source_swap_uses_retained_inode_and_never_caches_outside_byt
     parent = tmp_path / "parent"
     source_root = parent / "source"
     write_skill(source_root, "skills/original", "original")
-    outside = tmp_path / "outside"
+    outside = tmp_path / "outside-parent" / "source"
     write_skill(outside, "skills/raced", "raced")
+    original_bytes = (source_root / "skills" / "original" / "SKILL.md").read_bytes()
+    outside_bytes = (outside / "skills" / "raced" / "SKILL.md").read_bytes()
+    assert original_bytes != outside_bytes
     source = SourceSpec("local", "filesystem", source_root, PurePosixPath("skills"), None)
     cache = tmp_path / "cache"
     real_validate = source_store.validate_snapshot_tree
@@ -126,8 +129,18 @@ def test_filesystem_source_swap_uses_retained_inode_and_never_caches_outside_byt
         resolve_sources(config_for(source), cache)
 
     assert fired
+    assert source_root.resolve() == outside
+    assert (
+        (outside / "skills" / "raced" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .startswith("---\nname: raced\n")
+    )
     if cache.exists():
         assert not any(path.name == "raced" for path in cache.rglob("*"))
+        assert not any(
+            path.is_file() and path.read_bytes() == outside_bytes for path in cache.rglob("*")
+        )
+        assert not any(cache.rglob("*"))
 
 
 @pytest.mark.parametrize(
