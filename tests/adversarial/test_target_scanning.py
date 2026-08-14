@@ -159,3 +159,31 @@ def test_plan_cli_blocks_managed_link_that_escapes_locked_source_expectation(
     )
     assert not any(operation["action"] == "REPLACE" for operation in document["operations"])
     assert _snapshot(target) == before
+
+
+def test_non_fixture_plan_blocks_symlinked_target_ancestor_without_target_writes(
+    tmp_path: Path,
+) -> None:
+    config, configured_target, _ = _project(tmp_path, "symlinked-target-ancestor")
+    authority_path = config / "authority.yaml"
+    authority = yaml.safe_load(authority_path.read_text(encoding="utf-8"))
+    authority["authority"].update({"id": "non-fixture", "fixture_policy": "none"})
+    authority_path.write_text(yaml.safe_dump(authority, sort_keys=False), encoding="utf-8")
+
+    outside = tmp_path / "outside-targets"
+    outside.mkdir()
+    linked_parent = configured_target.parent
+    linked_parent.parent.mkdir(parents=True, exist_ok=True)
+    linked_parent.symlink_to(outside, target_is_directory=True)
+    before = _snapshot(outside)
+
+    first = _run(config, json_output=True)
+    middle = _snapshot(outside)
+    second = _run(config, json_output=True)
+    after = _snapshot(outside)
+
+    assert first.returncode == second.returncode == 3
+    assert first.stdout == second.stdout
+    assert first.stderr == second.stderr == b""
+    assert "target root contains a symlink" in json.loads(first.stdout)["blocked"][0]
+    assert before == middle == after

@@ -49,6 +49,37 @@ def test_absent_and_empty_roots_scan_as_empty(tmp_path: Path) -> None:
     assert absent.unmanaged == empty.unmanaged == ()
 
 
+def test_ordinary_missing_target_chain_scans_as_empty_without_creating_it(tmp_path: Path) -> None:
+    root = tmp_path / "missing" / "chain" / "target"
+
+    state = scan_target(_target(root))
+
+    assert state.root == root
+    assert state.managed == state.unmanaged == ()
+    assert not (tmp_path / "missing").exists()
+
+
+@pytest.mark.parametrize("leaf_exists", (False, True), ids=("absent-leaf", "existing-leaf"))
+def test_target_below_symlink_ancestor_fails_closed(tmp_path: Path, leaf_exists: bool) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    if leaf_exists:
+        (outside / "target").mkdir()
+    linked = tmp_path / "linked"
+    linked.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(TargetStateError, match=rf"target root contains a symlink: {linked}"):
+        scan_target(_target(linked / "target"))
+
+
+def test_absent_target_below_regular_file_ancestor_fails_closed(tmp_path: Path) -> None:
+    regular_file = tmp_path / "regular-file"
+    regular_file.write_text("not a directory", encoding="utf-8")
+
+    with pytest.raises(TargetStateError, match=rf"target root is not a directory: {regular_file}"):
+        scan_target(_target(regular_file / "target"))
+
+
 def test_scans_correct_managed_link_and_preserves_unmanaged_kinds(tmp_path: Path) -> None:
     root = tmp_path / "target"
     source = tmp_path / "cache" / "alpha" / "revision" / "skills" / "tool"
@@ -101,6 +132,45 @@ def test_duplicate_managed_artifact_fails_closed(tmp_path: Path) -> None:
 
     with pytest.raises(TargetStateError, match="duplicate managed artifact"):
         scan_target(_target(root))
+
+
+@pytest.mark.parametrize(
+    "artifact_id",
+    (".hidden/tool", "a/.hidden", "a/./tool", "a/../tool", r"a\b/tool", r"a/tool\name"),
+)
+def test_schema_invalid_artifact_id_never_becomes_manager_owned(
+    tmp_path: Path, artifact_id: str
+) -> None:
+    root = tmp_path / "target"
+    root.mkdir()
+    _managed(root, tmp_path / "cache", [_entry(artifact_id, tmp_path / "cache" / "source")])
+
+    with pytest.raises(
+        TargetStateError,
+        match=r"manager metadata violates receipt schema at entries\.0\.artifact_id \(pattern\)",
+    ):
+        scan_target(_target(root))
+
+
+def test_schema_validation_error_is_deterministic_and_bounded_for_hostile_value(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "target"
+    root.mkdir()
+    artifact_id = "." + "x" * 100_000 + "/tool"
+    _managed(root, tmp_path / "cache", [_entry(artifact_id, tmp_path / "cache" / "source")])
+
+    messages = []
+    for _ in range(2):
+        with pytest.raises(TargetStateError) as exc_info:
+            scan_target(_target(root))
+        messages.append(str(exc_info.value))
+
+    assert (
+        messages
+        == ["manager metadata violates receipt schema at entries.0.artifact_id (pattern)"] * 2
+    )
+    assert len(messages[0]) < 100
 
 
 @pytest.mark.parametrize("component", ["root", "metadata", "managed"])

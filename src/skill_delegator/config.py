@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
-from importlib.resources import files
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
-from jsonschema import Draft202012Validator
 
 from skill_delegator.errors import ConfigError
 from skill_delegator.models import AuthorityConfig, PoolSpec, SourceSpec, TargetSpec
+from skill_delegator.schema_validation import schema_error_location, schema_errors
 
 _CONFIG_SCHEMAS = {
     "authority.yaml": "authority.schema.json",
@@ -63,14 +61,6 @@ _UniqueKeySafeLoader.add_constructor(
 )
 
 
-def _schema_text(schema_name: str) -> str:
-    repository_schema = Path(__file__).parents[2] / "schemas" / schema_name
-    if repository_schema.is_file():
-        return repository_schema.read_text(encoding="utf-8")
-    packaged_schema = files("skill_delegator").joinpath("schemas", schema_name)
-    return packaged_schema.read_text(encoding="utf-8")
-
-
 def _load_document(config_dir: Path, filename: str, schema_name: str) -> dict[str, Any]:
     path = config_dir / filename
     try:
@@ -84,14 +74,10 @@ def _load_document(config_dir: Path, filename: str, schema_name: str) -> dict[st
     except yaml.YAMLError as error:
         raise ConfigError(f"{filename}: invalid YAML: {error}") from error
 
-    schema = json.loads(_schema_text(schema_name))
-    errors = sorted(
-        Draft202012Validator(schema).iter_errors(document),
-        key=lambda error: tuple(str(part) for part in error.absolute_path),
-    )
+    errors = schema_errors(document, schema_name)
     if errors:
         error = errors[0]
-        location = ".".join(str(part) for part in error.absolute_path) or "$"
+        location = schema_error_location(error)
         raise ConfigError(f"{filename} at {location}: {error.message}")
     return document
 
@@ -232,7 +218,7 @@ def load_config(config_dir: Path, *, require_lock: bool = True) -> AuthorityConf
     targets = tuple(
         TargetSpec(
             id=entry["id"],
-            root=_resolve(config_dir, entry["root"]),
+            root=_lexical_absolute(config_dir, entry["root"]),
             grants=tuple(entry["grants"]),
         )
         for entry in target_entries

@@ -9,6 +9,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from skill_delegator.models import CurrentTargetState, ManagedEntry, TargetSpec, UnmanagedEntry
+from skill_delegator.schema_validation import schema_error_location, schema_errors
 
 _MANAGER = "skill-delegator"
 _SCHEMA_VERSION = 1
@@ -82,6 +83,17 @@ def _read_metadata(path: Path) -> dict[str, Any]:
     return document
 
 
+def _validate_receipt_schema(document: dict[str, Any]) -> None:
+    errors = schema_errors(document, "receipt.schema.json")
+    if not errors:
+        return
+    error = errors[0]
+    location = schema_error_location(error)
+    raise TargetStateError(
+        f"manager metadata violates receipt schema at {location} ({error.validator})"
+    )
+
+
 def _parse_managed(root: Path) -> tuple[tuple[ManagedEntry, ...], Path | None]:
     namespace = root / ".skill-delegator"
     if not os.path.lexists(namespace):
@@ -100,6 +112,7 @@ def _parse_managed(root: Path) -> tuple[tuple[ManagedEntry, ...], Path | None]:
     if not os.path.lexists(metadata_path):
         raise TargetStateError(f"manager metadata directory has no managed.json: {namespace}")
     document = _read_metadata(metadata_path)
+    _validate_receipt_schema(document)
     expected_keys = {"schema_version", "manager", "cache_root", "entries"}
     if set(document) != expected_keys:
         raise TargetStateError("manager metadata has missing or unknown keys")
@@ -216,19 +229,36 @@ def _scan_unmanaged(root: Path, managed: tuple[ManagedEntry, ...]) -> tuple[Unma
     return tuple(sorted(entries, key=lambda item: item.relative_path.as_posix()))
 
 
+def _target_root_exists(root: Path) -> bool:
+    """Validate every existing lexical component and report whether root exists."""
+
+    current = Path(root.anchor)
+    paths = [current]
+    for part in root.parts[1:]:
+        current /= part
+        paths.append(current)
+
+    for component in paths:
+        try:
+            metadata = component.lstat()
+        except FileNotFoundError:
+            return False
+        except OSError as error:
+            raise TargetStateError(
+                f"cannot inspect target root component {component}: {error}"
+            ) from error
+        if stat.S_ISLNK(metadata.st_mode):
+            raise TargetStateError(f"target root contains a symlink: {component}")
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise TargetStateError(f"target root is not a directory: {component}")
+    return True
+
+
 def scan_target(target: TargetSpec) -> CurrentTargetState:
     """Inspect one target without creating, replacing, or removing anything."""
 
     root = Path(os.path.abspath(target.root))
-    if not os.path.lexists(root):
+    if not _target_root_exists(root):
         return CurrentTargetState(target.id, root, (), ())
-    try:
-        root_metadata = root.lstat()
-    except OSError as error:
-        raise TargetStateError(f"cannot inspect target root {root}: {error}") from error
-    if stat.S_ISLNK(root_metadata.st_mode):
-        raise TargetStateError(f"target root must not be a symlink: {root}")
-    if not stat.S_ISDIR(root_metadata.st_mode):
-        raise TargetStateError(f"target root is not a directory: {root}")
     managed, cache_root = _parse_managed(root)
     return CurrentTargetState(target.id, root, managed, _scan_unmanaged(root, managed), cache_root)

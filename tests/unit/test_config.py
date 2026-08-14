@@ -40,7 +40,7 @@ def rewrite_yaml(config_dir: Path, filename: str, mutate: object) -> None:
     path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
 
 
-def test_main_example_parses_with_safe_resolved_target_roots() -> None:
+def test_main_example_parses_with_safe_lexical_target_roots() -> None:
     config = load_config(EXAMPLE_CONFIG)
 
     assert config.authority_id == "main-example"
@@ -55,6 +55,30 @@ def test_main_example_parses_with_safe_resolved_target_roots() -> None:
     )
     with pytest.raises(FrozenInstanceError):
         config.authority_id = "changed"  # type: ignore[misc]
+
+
+def test_non_fixture_target_root_preserves_symlink_ancestor_lexically(tmp_path: Path) -> None:
+    config_dir = copy_config(tmp_path)
+    rewrite_yaml(
+        config_dir,
+        "authority.yaml",
+        lambda document: document["authority"].update(
+            {"id": "non-fixture", "fixture_policy": "none"}
+        ),
+    )
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (tmp_path / "linked").symlink_to(outside, target_is_directory=True)
+    rewrite_yaml(
+        config_dir,
+        "delegations.yaml",
+        lambda document: document["targets"][0].update({"root": "../linked/worker"}),
+    )
+
+    config = load_config(config_dir)
+
+    assert config.targets[0].root == tmp_path / "linked" / "worker"
+    assert config.targets[0].root != (tmp_path / "linked" / "worker").resolve()
 
 
 def test_lock_generation_loader_mode_allows_missing_lock_but_validation_requires_it(
