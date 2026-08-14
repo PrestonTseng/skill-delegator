@@ -53,15 +53,27 @@ def _validate_semantics(result: VerificationResult) -> None:
         if not (is_git or is_filesystem):
             raise ReceiptError("verification result has incoherent locked_sources identity")
     summary = result.operation_summary
+    fingerprint_ids = tuple(item.target_id for item in result.target_fingerprints)
     drift_count = sum(reason.category == "drift" for reason in result.reasons)
     invalid_count = sum(reason.category == "invalid" for reason in result.reasons)
     expected_result = "invalid" if invalid_count else "drift" if drift_count else "converged"
     if (
         summary.verified_links > summary.desired_links
+        or summary.desired_targets != len(fingerprint_ids)
+        or fingerprint_ids != tuple(sorted(set(fingerprint_ids)))
         or summary.drift_count != drift_count
         or summary.invalid_count != invalid_count
         or result.result != expected_result
         or len(result.reasons) != len(set(result.reasons))
+        or (
+            result.result == "converged"
+            and (
+                result.reasons
+                or summary.drift_count
+                or summary.invalid_count
+                or summary.verified_links != summary.desired_links
+            )
+        )
     ):
         raise ReceiptError("verification result has incoherent operation evidence")
 
@@ -223,9 +235,19 @@ def write_receipt(result: VerificationResult, receipt_root: Path) -> Path:
     name = f"{content_hash}.json"
     root = Path(os.path.abspath(receipt_root))
     directory_fd = _open_receipt_root(root)
+    try:
+        cleanup_fd = os.dup(directory_fd)
+    except OSError as error:
+        try:
+            os.close(directory_fd)
+        except OSError:
+            pass
+        raise ReceiptError("cannot retain receipt cleanup descriptor") from error
     temporary = f".{content_hash}.{secrets.token_hex(12)}.tmp"
     descriptor = -1
     published = False
+    completed = False
+    primary_error: ReceiptError | None = None
     try:
         _verify_root_identity(root, directory_fd)
         existing = _existing_payload(directory_fd, name)
@@ -233,64 +255,77 @@ def write_receipt(result: VerificationResult, receipt_root: Path) -> Path:
             if existing != payload:
                 raise ReceiptError("receipt content-address collision; refusing overwrite")
             _verify_root_identity(root, directory_fd)
-            return root / name
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        descriptor = os.open(temporary, flags, 0o600, dir_fd=directory_fd)
-        with os.fdopen(descriptor, "wb", closefd=True) as stream:
-            descriptor = -1
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        try:
-            os.link(
-                temporary,
-                name,
-                src_dir_fd=directory_fd,
-                dst_dir_fd=directory_fd,
-                follow_symlinks=False,
-            )
-            published = True
-        except FileExistsError:
-            existing = _existing_payload(directory_fd, name)
-            if existing != payload:
-                raise ReceiptError("receipt content-address collision; refusing overwrite")
-        os.fsync(directory_fd)
-        _verify_root_identity(root, directory_fd)
-        return root / name
-    except ReceiptError:
-        if published:
+            completed = True
+        else:
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            descriptor = os.open(temporary, flags, 0o600, dir_fd=directory_fd)
+            with os.fdopen(descriptor, "wb", closefd=True) as stream:
+                descriptor = -1
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
             try:
-                os.unlink(name, dir_fd=directory_fd)
-                os.fsync(directory_fd)
-            except OSError:
-                pass
-        raise
+                os.link(
+                    temporary,
+                    name,
+                    src_dir_fd=directory_fd,
+                    dst_dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+                published = True
+            except FileExistsError:
+                existing = _existing_payload(directory_fd, name)
+                if existing != payload:
+                    raise ReceiptError("receipt content-address collision; refusing overwrite")
+            os.fsync(directory_fd)
+            _verify_root_identity(root, directory_fd)
+            completed = True
+    except ReceiptError as error:
+        primary_error = error
     except OSError as error:
-        if published:
-            try:
-                os.unlink(name, dir_fd=directory_fd)
-                os.fsync(directory_fd)
-            except OSError:
-                pass
-        raise ReceiptError("cannot atomically publish verification receipt") from error
-    finally:
-        cleanup_error: OSError | None = None
-        if descriptor >= 0:
-            try:
-                os.close(descriptor)
-            except OSError as error:
-                cleanup_error = error
+        primary_error = ReceiptError("cannot atomically publish verification receipt")
+        primary_error.__cause__ = error
+
+    cleanup_error: OSError | None = None
+    if descriptor >= 0:
         try:
-            os.unlink(temporary, dir_fd=directory_fd)
-        except FileNotFoundError:
-            pass
+            os.close(descriptor)
         except OSError as error:
-            cleanup_error = cleanup_error or error
+            cleanup_error = error
+    try:
+        os.unlink(temporary, dir_fd=cleanup_fd)
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        cleanup_error = cleanup_error or error
+    try:
+        os.close(directory_fd)
+    except OSError as error:
+        cleanup_error = cleanup_error or error
+
+    rollback_error: OSError | None = None
+    if published and (primary_error is not None or cleanup_error is not None or not completed):
         try:
-            os.close(directory_fd)
+            os.unlink(name, dir_fd=cleanup_fd)
+            os.fsync(cleanup_fd)
         except OSError as error:
-            cleanup_error = cleanup_error or error
-        if cleanup_error is not None:
-            raise ReceiptError("cannot clean up receipt publication descriptors") from cleanup_error
+            rollback_error = error
+
+    # The cleanup descriptor is deliberately last. Once all rollback-capable work is
+    # complete, a close error cannot make a successful publication become an error.
+    try:
+        os.close(cleanup_fd)
+    except OSError:
+        pass
+
+    if rollback_error is not None:
+        raise ReceiptError("cannot roll back failed receipt publication") from rollback_error
+    if primary_error is not None:
+        raise primary_error
+    if cleanup_error is not None:
+        raise ReceiptError("cannot clean up receipt publication descriptors") from cleanup_error
+    if not completed:
+        raise ReceiptError("cannot atomically publish verification receipt")
+    return root / name

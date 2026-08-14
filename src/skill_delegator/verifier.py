@@ -399,67 +399,141 @@ _CONFIG_INPUTS = (
     "sources.yaml",
 )
 _MAX_CONFIG_BYTES = 16 * 1024 * 1024
+_CONFIG_DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0)
+if hasattr(os, "O_NOFOLLOW"):
+    _CONFIG_DIR_FLAGS |= os.O_NOFOLLOW
+_close_config_descriptor = os.close
+
+_ConfigInputIdentity = tuple[tuple[int, int], tuple[int, int, int]]
 
 
-def _read_config_input(config_dir: Path, name: str) -> bytes:
+def _read_config_input(
+    config_dir: Path,
+    name: str,
+    *,
+    identity_out: list[_ConfigInputIdentity] | None = None,
+) -> bytes:
     """Read one lexical regular input through a bounded no-follow descriptor."""
 
     path = Path(os.path.abspath(config_dir / name))
-    current = Path(path.anchor)
+    directory_descriptor = -1
+    file_descriptor = -1
     try:
+        directory_descriptor = os.open(path.anchor, _CONFIG_DIR_FLAGS)
         for part in path.parts[1:-1]:
-            current /= part
-            metadata = current.lstat()
-            if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
-                raise ValueError(f"config input is not beneath lexical directories: {name}")
-        metadata = path.lstat()
-        if not stat.S_ISREG(metadata.st_mode):
+            next_descriptor = os.open(part, _CONFIG_DIR_FLAGS, dir_fd=directory_descriptor)
+            previous_descriptor = directory_descriptor
+            directory_descriptor = next_descriptor
+            try:
+                _close_config_descriptor(previous_descriptor)
+            except OSError:
+                try:
+                    _close_config_descriptor(directory_descriptor)
+                except OSError:
+                    pass
+                directory_descriptor = -1
+                raise
+        parent_before = os.fstat(directory_descriptor)
+        lexical_file = os.stat(path.name, dir_fd=directory_descriptor, follow_symlinks=False)
+        if not stat.S_ISREG(lexical_file.st_mode):
             raise ValueError(f"config input must be a lexical regular file: {name}")
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
-        descriptor = os.open(path, flags)
-        try:
-            opened = os.fstat(descriptor)
-            if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (
-                metadata.st_dev,
-                metadata.st_ino,
-            ):
-                raise ValueError(f"config input identity changed during read: {name}")
-            chunks: list[bytes] = []
-            remaining = _MAX_CONFIG_BYTES + 1
-            while remaining:
-                chunk = os.read(descriptor, min(1024 * 1024, remaining))
-                if not chunk:
-                    break
-                chunks.append(chunk)
-                remaining -= len(chunk)
-            payload = b"".join(chunks)
-            if len(payload) > _MAX_CONFIG_BYTES:
-                raise ValueError(f"config input exceeds safe read limit: {name}")
-            after = os.fstat(descriptor)
-            if (after.st_dev, after.st_ino, after.st_size) != (
-                opened.st_dev,
-                opened.st_ino,
-                len(payload),
-            ):
-                raise ValueError(f"config input changed during read: {name}")
-            return payload
-        finally:
-            os.close(descriptor)
+        file_descriptor = os.open(path.name, flags, dir_fd=directory_descriptor)
+        opened = os.fstat(file_descriptor)
+        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (
+            lexical_file.st_dev,
+            lexical_file.st_ino,
+        ):
+            raise ValueError(f"config input identity changed during read: {name}")
+        chunks: list[bytes] = []
+        remaining = _MAX_CONFIG_BYTES + 1
+        while remaining:
+            chunk = os.read(file_descriptor, min(1024 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        payload = b"".join(chunks)
+        if len(payload) > _MAX_CONFIG_BYTES:
+            raise ValueError(f"config input exceeds safe read limit: {name}")
+        after = os.fstat(file_descriptor)
+        parent_after = os.fstat(directory_descriptor)
+        if (
+            (after.st_dev, after.st_ino, after.st_size)
+            != (opened.st_dev, opened.st_ino, opened.st_size)
+            or len(payload) != opened.st_size
+            or (parent_after.st_dev, parent_after.st_ino)
+            != (parent_before.st_dev, parent_before.st_ino)
+        ):
+            raise ValueError(f"config input changed during read: {name}")
+        if identity_out is not None:
+            identity_out.append(
+                (
+                    (parent_before.st_dev, parent_before.st_ino),
+                    (opened.st_dev, opened.st_ino, opened.st_size),
+                )
+            )
+        return payload
     except ValueError:
         raise
     except OSError as error:
         raise ValueError(f"cannot safely read config input: {name}") from error
+    finally:
+        cleanup_error: OSError | None = None
+        for descriptor in (file_descriptor, directory_descriptor):
+            if descriptor < 0:
+                continue
+            try:
+                _close_config_descriptor(descriptor)
+            except OSError as error:
+                cleanup_error = cleanup_error or error
+        if cleanup_error is not None:
+            raise ValueError(f"cannot close config input descriptors: {name}") from cleanup_error
+
+
+def _lexical_inputs_match(
+    config_dir: Path, expected_identities: dict[str, _ConfigInputIdentity]
+) -> bool:
+    try:
+        config_metadata = config_dir.lstat()
+        if not stat.S_ISDIR(config_metadata.st_mode):
+            return False
+        expected_parents = {identity[0] for identity in expected_identities.values()}
+        if expected_parents != {(config_metadata.st_dev, config_metadata.st_ino)}:
+            return False
+        for name, (_, expected_file) in expected_identities.items():
+            metadata = (config_dir / name).lstat()
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or (
+                    metadata.st_dev,
+                    metadata.st_ino,
+                    metadata.st_size,
+                )
+                != expected_file
+            ):
+                return False
+    except OSError:
+        return False
+    return True
 
 
 def _repository_commit(
-    config_dir: Path, current_inputs: dict[str, bytes]
+    config_dir: Path,
+    current_inputs: dict[str, bytes],
+    *,
+    expected_identities: dict[str, _ConfigInputIdentity] | None = None,
 ) -> tuple[str | None, bool]:
     """Return HEAD only when its ordinary blobs equal every current input byte-for-byte."""
 
     environment = os.environ.copy()
     environment["GIT_OPTIONAL_LOCKS"] = "0"
+    if expected_identities is not None and not _lexical_inputs_match(
+        config_dir, expected_identities
+    ):
+        return None, False
     try:
         root_result = subprocess.run(
             ["git", "-C", str(config_dir), "rev-parse", "--show-toplevel"],
@@ -528,6 +602,10 @@ def _repository_commit(
             or blob.stdout != current_inputs[name]
         ):
             return None, False
+    if expected_identities is not None and not _lexical_inputs_match(
+        config_dir, expected_identities
+    ):
+        return None, False
     return commit, True
 
 
@@ -540,7 +618,14 @@ def bind_verification_evidence(
     """Bind byte, repository, authority, and exact-lock identities to a result."""
 
     config_dir = Path(os.path.abspath(config_dir))
-    current_inputs = {name: _read_config_input(config_dir, name) for name in _CONFIG_INPUTS}
+    current_inputs: dict[str, bytes] = {}
+    input_identities: dict[str, _ConfigInputIdentity] = {}
+    for name in _CONFIG_INPUTS:
+        identity: list[_ConfigInputIdentity] = []
+        current_inputs[name] = _read_config_input(config_dir, name, identity_out=identity)
+        input_identities[name] = identity[0]
+    if len({identity[0] for identity in input_identities.values()}) != 1:
+        raise ValueError("config directory identity changed during evidence binding")
     hashes = tuple(
         ConfigFileHash(name, hashlib.sha256(current_inputs[name]).hexdigest())
         for name in _CONFIG_INPUTS
@@ -566,7 +651,9 @@ def bind_verification_evidence(
                 tree_identity,
             )
         )
-    commit, available = _repository_commit(config_dir, current_inputs)
+    commit, available = _repository_commit(
+        config_dir, current_inputs, expected_identities=input_identities
+    )
     return replace(
         result,
         authority_id=config.authority_id,

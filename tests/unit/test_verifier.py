@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path, PurePosixPath
 
+import pytest
+
+from skill_delegator import verifier
 from skill_delegator.inventory import hash_tree
 from skill_delegator.models import (
     CurrentState,
@@ -10,7 +14,7 @@ from skill_delegator.models import (
     DesiredState,
     DesiredTarget,
 )
-from skill_delegator.verifier import verify_state
+from skill_delegator.verifier import _read_config_input, _repository_commit, verify_state
 
 
 def _fixture(
@@ -79,6 +83,47 @@ def test_fresh_converged_state_records_verified_links_and_fingerprint(tmp_path: 
     assert result.operation_summary.verified_links == 1
     assert len(result.target_fingerprints) == 1
     assert len(result.target_fingerprints[0].sha256) == 64
+
+
+def test_config_read_retains_ancestor_inodes_and_disables_stale_repository_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = tmp_path / "project"
+    config = project / "config"
+    config.mkdir(parents=True)
+    expected = b"retained original bytes"
+    (config / "authority.yaml").write_bytes(expected)
+    external = tmp_path / "external-config"
+    external.mkdir()
+    (external / "authority.yaml").write_bytes(b"redirected external bytes")
+    moved = project / "config-original"
+    real_open = verifier.os.open
+    fired = False
+
+    def swap_after_open(path, flags, mode=0o777, *, dir_fd=None):
+        nonlocal fired
+        descriptor = real_open(path, flags, mode, dir_fd=dir_fd)
+        if path == "config" and not fired:
+            assert dir_fd is not None
+            assert Path(os.readlink(f"/proc/self/fd/{dir_fd}")) == project
+            fired = True
+            config.rename(moved)
+            config.symlink_to(external, target_is_directory=True)
+        return descriptor
+
+    monkeypatch.setattr(verifier.os, "open", swap_after_open)
+    identity: list[tuple[tuple[int, int], tuple[int, int, int]]] = []
+
+    payload = _read_config_input(config, "authority.yaml", identity_out=identity)
+
+    assert fired
+    assert payload == expected
+    current_inputs = {name: expected for name in verifier._CONFIG_INPUTS}
+    identities = {name: identity[0] for name in verifier._CONFIG_INPUTS}
+    assert _repository_commit(config, current_inputs, expected_identities=identities) == (
+        None,
+        False,
+    )
 
 
 def test_source_tamper_after_apply_is_drift(tmp_path: Path) -> None:

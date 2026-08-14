@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from skill_delegator.models import (
     LockedSourceIdentity,
     OperationSummary,
     TargetFingerprint,
+    VerificationReason,
     VerificationResult,
 )
 from skill_delegator.receipts import ReceiptError, receipt_document, write_receipt
@@ -249,3 +251,107 @@ def test_write_receipt_rejects_semantically_impossible_operation_evidence(tmp_pa
 
     with pytest.raises(ReceiptError, match="operation evidence"):
         write_receipt(impossible, tmp_path / "var" / "receipts")
+
+
+def test_write_receipt_rolls_back_new_publication_when_primary_cleanup_close_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "var" / "receipts"
+    root.mkdir(parents=True)
+    real_close = receipts.os.close
+    real_link = receipts.os.link
+    linked = False
+    fired = False
+
+    def tracking_link(*args, **kwargs):
+        nonlocal linked
+        result = real_link(*args, **kwargs)
+        linked = True
+        return result
+
+    def fail_primary_close(descriptor: int) -> None:
+        nonlocal fired
+        try:
+            descriptor_path = os.readlink(f"/proc/self/fd/{descriptor}")
+        except OSError:
+            descriptor_path = ""
+        if linked and not fired and descriptor_path == str(root):
+            fired = True
+            real_close(descriptor)
+            raise OSError("injected post-publication directory close failure")
+        real_close(descriptor)
+
+    monkeypatch.setattr(receipts.os, "link", tracking_link)
+    monkeypatch.setattr(receipts.os, "close", fail_primary_close)
+
+    with pytest.raises(ReceiptError, match="clean up"):
+        write_receipt(_result(), root)
+
+    assert fired
+    assert not list(root.glob("*.json"))
+
+    monkeypatch.setattr(receipts.os, "close", real_close)
+    existing = write_receipt(_result(), root)
+    fired = False
+    monkeypatch.setattr(receipts.os, "close", fail_primary_close)
+    with pytest.raises(ReceiptError, match="clean up"):
+        write_receipt(_result(), root)
+    assert fired
+    assert existing.exists()
+
+    root_close_count = 0
+
+    def fail_only_final_cleanup_close(descriptor: int) -> None:
+        nonlocal root_close_count
+        try:
+            descriptor_path = os.readlink(f"/proc/self/fd/{descriptor}")
+        except OSError:
+            descriptor_path = ""
+        if descriptor_path == str(root):
+            root_close_count += 1
+            if root_close_count == 2:
+                real_close(descriptor)
+                raise OSError("injected final cleanup descriptor close failure")
+        real_close(descriptor)
+
+    monkeypatch.setattr(receipts.os, "link", real_link)
+    monkeypatch.setattr(receipts.os, "close", fail_only_final_cleanup_close)
+    assert write_receipt(_result(), root) == existing
+    assert root_close_count == 2
+    assert existing.exists()
+
+
+def test_write_receipt_requires_coherent_converged_fingerprints_and_counts(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "var" / "receipts"
+    second = TargetFingerprint("z-worker", _SHA_B)
+    impossible = (
+        replace(_result(), operation_summary=OperationSummary(1, 2, 1, 0, 0)),
+        replace(_result(), operation_summary=OperationSummary(2, 1, 1, 0, 0)),
+        replace(
+            _result(),
+            target_fingerprints=(
+                _result().target_fingerprints[0],
+                _result().target_fingerprints[0],
+            ),
+            operation_summary=OperationSummary(2, 1, 1, 0, 0),
+        ),
+        replace(
+            _result(),
+            target_fingerprints=(second, _result().target_fingerprints[0]),
+            operation_summary=OperationSummary(2, 1, 1, 0, 0),
+        ),
+    )
+
+    for result in impossible:
+        with pytest.raises(ReceiptError, match="operation evidence"):
+            write_receipt(result, root)
+
+    legitimate_drift = replace(
+        _result(),
+        result="drift",
+        reasons=(VerificationReason("missing", "drift", "worker", "source/one", "missing"),),
+        operation_summary=OperationSummary(1, 2, 1, 1, 0),
+    )
+    assert write_receipt(legitimate_drift, root).exists()
