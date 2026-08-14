@@ -88,10 +88,46 @@ def test_resolves_exact_git_commit_into_content_addressed_cache(tmp_path: Path) 
     assert resolved[0].skills[0].canonical_id == "upstream/one"
     locked = build_lock(config_for(source), resolved)
     assert locked.sources[0].resolved_commit == first
-    assert locked.sources[0].tree_hash is None
+    assert locked.sources[0].tree_hash == hash_tree(resolved[0].root)
     document = yaml.safe_load(serialize_lock(locked))
     assert document["sources"][0]["resolved_commit"] == first
-    assert "tree_hash" not in document["sources"][0]
+    assert document["sources"][0]["tree_hash"] == locked.sources[0].tree_hash
+
+
+@pytest.mark.parametrize("swap_level", ("source", "ancestor"))
+def test_filesystem_source_swap_uses_retained_inode_and_never_caches_outside_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, swap_level: str
+) -> None:
+    parent = tmp_path / "parent"
+    source_root = parent / "source"
+    write_skill(source_root, "skills/original", "original")
+    outside = tmp_path / "outside"
+    write_skill(outside, "skills/raced", "raced")
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("skills"), None)
+    cache = tmp_path / "cache"
+    real_validate = source_store.validate_snapshot_tree
+    fired = False
+
+    def swap_after_open(root: Path) -> Path:
+        nonlocal fired
+        if not fired:
+            fired = True
+            if swap_level == "source":
+                source_root.rename(parent / "source-original")
+                source_root.symlink_to(outside, target_is_directory=True)
+            else:
+                parent.rename(tmp_path / "parent-original")
+                parent.symlink_to(outside.parent, target_is_directory=True)
+        return real_validate(root)
+
+    monkeypatch.setattr(source_store, "validate_snapshot_tree", swap_after_open)
+
+    with pytest.raises(SourceError, match="filesystem-source-identity-changed"):
+        resolve_sources(config_for(source), cache)
+
+    assert fired
+    if cache.exists():
+        assert not any(path.name == "raced" for path in cache.rglob("*"))
 
 
 @pytest.mark.parametrize(

@@ -84,11 +84,11 @@ def test_receipt_explicitly_records_unavailable_repository_commit(tmp_path: Path
     assert document["repository"] == {"available": False, "commit": None}
 
 
-def test_git_revision_does_not_claim_an_unavailable_tree_identity() -> None:
+def test_git_revision_requires_and_records_direct_snapshot_tree_identity() -> None:
     commit = "c" * 40
     result = replace(
         _result(),
-        locked_sources=(LockedSourceIdentity("source", "git", "resolved_commit", commit, None),),
+        locked_sources=(LockedSourceIdentity("source", "git", "resolved_commit", commit, _SHA_B),),
     )
 
     document = receipt_document(result)
@@ -102,7 +102,7 @@ def test_git_revision_does_not_claim_an_unavailable_tree_identity() -> None:
             "type": "git",
             "revision_kind": "resolved_commit",
             "revision": commit,
-            "tree_identity": None,
+            "tree_identity": _SHA_B,
         }
     ]
 
@@ -204,7 +204,7 @@ def test_write_receipt_rejects_duplicate_or_missing_config_names(
     "identity",
     (
         LockedSourceIdentity("source", "git", "tree_hash", _SHA_A, _SHA_A),
-        LockedSourceIdentity("source", "git", "resolved_commit", _SHA_A, _SHA_A),
+        LockedSourceIdentity("source", "git", "resolved_commit", _SHA_A, None),
         LockedSourceIdentity("source", "filesystem", "resolved_commit", _SHA_A, None),
         LockedSourceIdentity("source", "filesystem", "tree_hash", _SHA_A, _SHA_B),
     ),
@@ -217,7 +217,7 @@ def test_write_receipt_rejects_incoherent_source_identities(
 
 
 def test_write_receipt_rejects_duplicate_locked_source_ids(tmp_path: Path) -> None:
-    duplicate = LockedSourceIdentity("source", "git", "resolved_commit", "c" * 40, None)
+    duplicate = LockedSourceIdentity("source", "git", "resolved_commit", "c" * 40, _SHA_A)
     with pytest.raises(ReceiptError, match="locked_sources"):
         write_receipt(
             replace(_result(), locked_sources=(_result().locked_sources[0], duplicate)),

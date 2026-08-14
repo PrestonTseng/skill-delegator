@@ -32,7 +32,8 @@ class AnchoredDirectory:
     def descriptor_path(self) -> Path:
         # Child processes (Git) can traverse the retained descriptor through the
         # parent's proc entry even though the descriptor itself is close-on-exec.
-        return Path(f"/proc/{os.getpid()}/fd/{self.fd}")
+        proc_path = Path(f"/proc/{os.getpid()}/fd/{self.fd}")
+        return proc_path if proc_path.exists() else Path(f"/dev/fd/{self.fd}")
 
     def open_child(self, name: str, *, description: str) -> None:
         if Path(name).parts != (name,) or name in {"", ".", ".."}:
@@ -115,6 +116,43 @@ def open_anchored_directory(path: Path, *, description: str) -> AnchoredDirector
             names.append(name)
             identities.append((metadata.st_dev, metadata.st_ino))
             current_fd = child_fd
+    except OSError as error:
+        for fd in reversed(fds):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        raise SourceError(f"{description}-unsafe-symlink-or-nondirectory") from error
+    result = AnchoredDirectory(lexical, fds, names, identities)
+    result.verify(description=description)
+    return result
+
+
+def open_existing_anchored_directory(path: Path, *, description: str) -> AnchoredDirectory:
+    """Traverse an existing directory chain without following links or creating entries."""
+
+    lexical = Path(os.path.abspath(path))
+    fds: list[int] = []
+    names: list[str] = []
+    identities: list[tuple[int, int]] = []
+    try:
+        current_fd = os.open(lexical.anchor, _DIRECTORY_FLAGS | _NOFOLLOW)
+        fds.append(current_fd)
+        root = os.fstat(current_fd)
+        identities.append((root.st_dev, root.st_ino))
+        for name in lexical.parts[1:]:
+            child_fd = os.open(name, _DIRECTORY_FLAGS | _NOFOLLOW, dir_fd=current_fd)
+            metadata = os.fstat(child_fd)
+            if not stat.S_ISDIR(metadata.st_mode):
+                raise NotADirectoryError(name)
+            fds.append(child_fd)
+            names.append(name)
+            identities.append((metadata.st_dev, metadata.st_ino))
+            current_fd = child_fd
+    except FileNotFoundError as error:
+        for fd in reversed(fds):
+            os.close(fd)
+        raise SourceError(f"{description}-missing") from error
     except OSError as error:
         for fd in reversed(fds):
             try:

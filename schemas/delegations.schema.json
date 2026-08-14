@@ -21,7 +21,8 @@
             "minItems": 1,
             "uniqueItems": true,
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$"
             }
           }
         }

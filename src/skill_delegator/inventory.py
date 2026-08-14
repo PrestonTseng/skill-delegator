@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 
 from skill_delegator.errors import SourceError
+from skill_delegator.identifiers import canonical_relative_path
 from skill_delegator.models import SkillArtifact
 
 _RUNTIME_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -230,6 +231,8 @@ def discover_skills(source_root: Path, skill_root: PurePosixPath) -> tuple[Skill
             raise SourceError(
                 f"skill path cannot form a UTF-8 canonical id: {relative.as_posix()!a}"
             ) from error
+        if not canonical_relative_path(relative):
+            raise SourceError(f"skill path cannot form a canonical id: {relative.as_posix()!r}")
         seen.add(relative)
         name, description = _frontmatter(manifest)
         artifacts.append(

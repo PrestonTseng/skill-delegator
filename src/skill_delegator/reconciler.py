@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import fcntl
 import json
+import math
 import os
 import stat
 import time
@@ -12,6 +12,12 @@ from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 
 from skill_delegator.errors import SourceError
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - isolated import contract covers this path
+    fcntl = None  # type: ignore[assignment]
+
 from skill_delegator.inventory import hash_tree
 from skill_delegator.managed_state import TargetStateError, scan_target, target_fingerprint
 from skill_delegator.models import (
@@ -24,7 +30,7 @@ from skill_delegator.models import (
 
 _MUTATIONS = {"CREATE", "REPLACE", "REMOVE"}
 _MAX_ERROR = 500
-_DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0)
+_DIR_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
 if hasattr(os, "O_NOFOLLOW"):
     _DIR_FLAGS |= os.O_NOFOLLOW
 
@@ -227,6 +233,8 @@ def _read_bytes_at(directory_fd: int, name: str) -> bytes:
 
 
 def _acquire_fd(descriptor: int, *, deadline: float, target_id: str, label: str) -> None:
+    if fcntl is None:
+        raise ApplyError("V1 requires POSIX advisory locking")
     while True:
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -257,7 +265,8 @@ def _close_locked(locked: _LockedTarget) -> None:
         locked.transaction = None
     for descriptor in (locked.lock_fd, locked.namespace_fd, locked.root_fd):
         try:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            if fcntl is not None:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
         except OSError:
             pass
         try:
@@ -781,6 +790,8 @@ def _validate_plan_bindings(plan: ReconciliationPlan) -> None:
 def apply_plan(plan: ReconciliationPlan, *, lock_timeout: float) -> ApplyResult:
     """Apply one immutable reviewed plan under stable inode locks and directory descriptors."""
 
+    if not math.isfinite(lock_timeout) or lock_timeout < 0:
+        raise ApplyError("lock_timeout must be finite non-negative")
     if plan.blocked:
         raise ApplyError(f"plan is blocked: {_bounded(plan.blocked[0])}")
     _validate_plan_bindings(plan)
@@ -791,9 +802,6 @@ def apply_plan(plan: ReconciliationPlan, *, lock_timeout: float) -> ApplyResult:
         return ApplyResult(0, 0)
     if not mutations:
         return ApplyResult(0, len(plan.targets))
-    if lock_timeout < 0:
-        raise ApplyError("lock_timeout must be non-negative")
-
     locked_targets: list[_LockedTarget] = []
     journals: list[_JournalEntry] = []
     created_parents: list[_CreatedParent] = []

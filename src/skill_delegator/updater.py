@@ -38,7 +38,9 @@ def _revision(source: LockedSource) -> str:
         revision is None
         or len(revision) != expected
         or any(character not in _HEX for character in revision)
-        or (source.source_type == "git" and source.tree_hash is not None)
+        or source.tree_hash is None
+        or len(source.tree_hash) != 64
+        or any(character not in _HEX for character in source.tree_hash)
         or (source.source_type == "filesystem" and source.resolved_commit is not None)
     ):
         raise SourceError(f"invalid locked identity for source {source.source_id}")

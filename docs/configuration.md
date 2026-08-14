@@ -68,7 +68,7 @@ sources:
     sha256: <64 lowercase hex>
 ```
 
-Git uses `resolved_commit` (40 lowercase hex) instead of `tree_hash`. Configured and locked source sets and types must match exactly. Canonical prefix/suffix, configured skill root, locked path, runtime name, pool, grants, and content hash are revalidated at consumption boundaries.
+Git records both `resolved_commit` (40 lowercase hex) and `tree_hash` (the 64-lowercase-hex hash of the complete directly locked snapshot). Filesystem sources use `tree_hash` as both revision and snapshot identity. Configured and locked source sets and types must match exactly. Canonical prefix/suffix, configured skill root, locked path, runtime name, pool, grants, source snapshot hash, and skill content hash are revalidated at consumption boundaries.
 
 ## Generated state
 
@@ -77,4 +77,4 @@ Git uses `resolved_commit` (40 lowercase hex) instead of `tree_hash`. Configured
 - `<target>/.skill-delegator/operation.lock`, `staging/`, `backup/`, `failure.json`: transaction internals/failure evidence.
 - `var/receipts/<sha256>.json`: canonical verification receipts.
 
-Keep `var/` ignored. Do not commit generated cache, target, transaction, or receipt data as configuration.
+Keep only `var/cache/`, `var/example-targets/`, and `var/receipts/` ignored. Do not commit generated cache, example-target, transaction, or receipt data as configuration.

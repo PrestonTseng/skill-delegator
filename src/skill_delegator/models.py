@@ -111,6 +111,7 @@ class ResolvedSource:
     source_type: str
     location: str
     revision: str
+    tree_hash: str
     root: Path
     skills: tuple[ResolvedSkill, ...]
 
@@ -166,10 +167,20 @@ class DesiredTarget:
 
 
 @dataclass(frozen=True)
+class DesiredSource:
+    """Exact complete cached snapshot required by desired state."""
+
+    source_id: str
+    root: Path
+    tree_hash: str
+
+
+@dataclass(frozen=True)
 class DesiredState:
     """Pure resolved desired state for an authority."""
 
     targets: tuple[DesiredTarget, ...]
+    sources: tuple[DesiredSource, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -290,6 +301,14 @@ class LockedSourceIdentity:
 
 
 @dataclass(frozen=True)
+class SourceTreeEvidence:
+    """Fresh whole-snapshot identity observed independently of target links."""
+
+    source_id: str
+    sha256: str
+
+
+@dataclass(frozen=True)
 class OperationSummary:
     """Deterministic aggregate of desired and freshly verified state."""
 
@@ -313,6 +332,7 @@ class VerificationResult:
     repository_commit_available: bool = False
     config_hashes: tuple[ConfigFileHash, ...] = ()
     locked_sources: tuple[LockedSourceIdentity, ...] = ()
+    source_tree_evidence: tuple[SourceTreeEvidence, ...] = ()
 
     @property
     def converged(self) -> bool:

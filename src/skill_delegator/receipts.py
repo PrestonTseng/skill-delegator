@@ -13,7 +13,7 @@ from typing import Any
 from skill_delegator.models import VerificationResult
 from skill_delegator.schema_validation import schema_error_location, schema_errors
 
-_DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0)
+_DIR_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
 if hasattr(os, "O_NOFOLLOW"):
     _DIR_FLAGS |= os.O_NOFOLLOW
 
@@ -41,7 +41,8 @@ def _validate_semantics(result: VerificationResult) -> None:
         is_git = (
             item.source_type == "git"
             and item.revision_kind == "resolved_commit"
-            and item.tree_identity is None
+            and item.tree_identity is not None
+            and len(item.tree_identity) == 64
             and len(item.revision) in range(40, 65)
         )
         is_filesystem = (

@@ -11,13 +11,13 @@ V1 rejects, among other cases:
 - malformed/duplicate-key/unknown-field configuration and manager metadata;
 - source, cache, target, metadata, transaction, and receipt symlink/non-directory escapes at covered boundaries;
 - broken or escaping source links and unsupported source special files;
-- mismatched configured/locked source sets, types, prefixes, paths, exact revisions, and hashes;
+- mismatched configured/locked source sets, types, prefixes, paths, Git commits, complete snapshot tree hashes, and skill hashes;
 - hostile canonical or runtime names, duplicate runtime identities, path collisions, and grants outside the pool;
 - broken, missing, wrong-destination, escaping, or ambiguously owned managed links;
 - unmanaged collisions, stale plans, target/namespace identity replacement, and cooperating concurrent mutation applies;
 - receipt overwrite/collision and unsafe lock-publication outcomes.
 
-Mutation uses lexical checks plus descriptor-relative operations, retained directory descriptors/inode identities, stable-order `fcntl` locks, source re-hashing, staging, backups, journals, and explicit commit boundaries. REMOVE is limited to strict manager-owned state and requires CLI confirmation.
+Mutation uses lexical checks plus descriptor-relative operations, retained directory descriptors/inode identities, stable-order `fcntl` locks, source re-hashing, staging, backups, journals, and explicit commit boundaries. Verification freshly hashes the full cached snapshot exactly once per source, so ungranted additions or changes invalidate evidence. REMOVE is limited to strict manager-owned state and requires CLI confirmation.
 
 ## Trusted and untrusted components
 

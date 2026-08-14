@@ -162,7 +162,7 @@ def test_resolve_cli_json_is_repeatable_and_does_not_touch_target_roots(tmp_path
         ({"source_id": "evil"}, "missing=['example'], extra=['evil']"),
         ({"canonical_id": "evil/hello"}, "artifact evil/hello is enclosed by source example"),
         ({"path": "different"}, "locked path different does not match canonical suffix hello"),
-        ({"path": "../hello"}, "locked path ../hello is outside configured skill root ."),
+        ({"path": "../hello"}, "skill-lock.yaml at sources.0.skills.0.path:"),
     ),
     ids=("evil-source", "wrong-prefix", "wrong-relative-path", "path-escape"),
 )

@@ -26,7 +26,7 @@ The command resolves exact revisions, rebuilds and validates the complete candid
 
 Review:
 
-1. old/new exact source identities;
+1. old/new exact source identities (Git commit plus directly locked complete-snapshot tree hash, or filesystem tree hash);
 2. every pooled/delegated artifact hash change;
 3. removed/renamed artifacts and new ungranted artifacts;
 4. the complete `git diff -- config/skill-lock.yaml`;
@@ -44,7 +44,7 @@ skillctl verify --config config
 skillctl status --json --config config
 ```
 
-Apply reconstructs desired/current state from current config and lock, locks targets, and rejects stale or hostile state. It never follows `track`. Verify independently recomputes evidence and writes a content-addressed receipt.
+Apply reconstructs desired/current state from current config and lock, locks targets, and rejects stale or hostile state. It never follows `track`. Verify independently freshly hashes each complete cached source snapshot once, checks that identity against the lock even for ungranted content, and writes a content-addressed receipt containing the Git commit plus snapshot hash (or filesystem snapshot hash).
 
 ## Rollback model
 

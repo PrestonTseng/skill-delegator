@@ -22,7 +22,7 @@ fresh desired/source/target evidence ──verify──> content-addressed recei
 
 Artifact identity is `<source-id>/<relative-path-from-skill-root>`. Runtime identity is a safe bounded `SKILL.md` frontmatter `name`; duplicate runtime identities per target fail. Artifact paths—not runtime names—determine symlink placement: `<target-root>/<artifact-id>`.
 
-Apply consumes only exact `resolved_commit` or `tree_hash` lock identities and exact skill hashes. Mutable Git `track` values are update inputs, never apply inputs. Cached source snapshots live at `var/cache/sources/<source-id>/<exact-revision>/`.
+Apply consumes only exact lock identities and exact skill hashes. A Git lock binds both the resolved commit and a SHA-256 tree hash computed directly over the complete locked snapshot; a filesystem lock uses that complete tree hash as its revision. Mutable Git `track` values are update inputs, never apply inputs. Cached source snapshots live at `var/cache/sources/<source-id>/<snapshot-tree-hash>/`.
 
 ## Symlink-only target model
 
@@ -36,7 +36,7 @@ An apply transaction spans the configured targets in the invocation. This is pro
 
 Lock publication has a separate boundary: all staging, fsync, identity, byte, parent, and prior-public checks happen before one atomic `os.replace`. Successful replace is the commit boundary. After it, the public lock pathname is observed only; it is never rolled back or overwritten by cleanup.
 
-Verification receipts use canonical JSON plus newline. Their filename is the SHA-256 of the exact bytes. Publication is no-overwrite/content-addressed; repeated identical evidence reuses the path.
+Verification freshly hashes every complete cached source snapshot once per source before claiming its locked identity, including ungranted content. Receipts record Git commit plus directly locked snapshot tree hash (or the filesystem tree hash), use canonical JSON plus newline, and are named by the SHA-256 of those exact bytes. Publication is no-overwrite/content-addressed; repeated identical evidence reuses the path.
 
 ## Packaging
 

@@ -18,7 +18,11 @@ from skill_delegator.inventory import (
     validate_source_tree,
 )
 from skill_delegator.models import AuthorityConfig, ResolvedSkill, ResolvedSource, SourceSpec
-from skill_delegator.safe_paths import AnchoredDirectory, open_anchored_directory
+from skill_delegator.safe_paths import (
+    AnchoredDirectory,
+    open_anchored_directory,
+    open_existing_anchored_directory,
+)
 
 _GIT_TIMEOUT_SECONDS = 30
 _MAX_GIT_ERROR_CHARS = 2000
@@ -150,43 +154,33 @@ def _resolved_skills(source: SourceSpec, root: Path) -> tuple[ResolvedSkill, ...
     return tuple(skills)
 
 
-def _validate_lexical_filesystem_source(path: Path) -> None:
-    """Reject symlinked or non-directory ancestors before resolving a local source."""
-
-    lexical = Path(os.path.abspath(path))
-    current = Path(lexical.anchor)
-    try:
-        for part in lexical.parts[1:]:
-            current /= part
-            metadata = current.lstat()
-            if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
-                raise SourceError("filesystem-source-unsafe-symlink-or-nondirectory")
-    except FileNotFoundError as error:
-        raise SourceError("filesystem-source-missing") from error
-    except OSError as error:
-        raise SourceError("filesystem-source-unreadable") from error
-
-
 def _resolve_filesystem(source: SourceSpec, cache_root: Path) -> ResolvedSource:
     if not isinstance(source.location, Path):
         raise SourceError(f"filesystem source {source.id} location must be a Path")
-    # Validate the full source before creating any cache state or publishing links.
-    _validate_lexical_filesystem_source(source.location)
-    validate_snapshot_tree(source.location)
-    discover_skills(source.location, source.skill_root)
-    revision = hash_tree(source.location)
-    cache = _source_cache_root(cache_root, source.id)
+    retained = open_existing_anchored_directory(source.location, description="filesystem-source")
     try:
-        snapshot = _cache_snapshot(source.location, cache, revision, revision)
-        skills = _resolved_skills(source, snapshot)
-        cache.verify(description="content-addressed-cache")
+        retained_root = retained.descriptor_path
+        validate_snapshot_tree(retained_root)
+        discover_skills(retained_root, source.skill_root)
+        revision = hash_tree(retained_root)
+        retained.verify(description="filesystem-source")
+        cache = _source_cache_root(cache_root, source.id)
+        try:
+            snapshot = _cache_snapshot(retained_root, cache, revision, revision)
+            retained.verify(description="filesystem-source")
+            skills = _resolved_skills(source, snapshot)
+            cache.verify(description="content-addressed-cache")
+            retained.verify(description="filesystem-source")
+        finally:
+            cache.close()
     finally:
-        cache.close()
+        retained.close()
     return ResolvedSource(
         source_id=source.id,
         source_type=source.type,
         location=str(source.location),
         revision=revision,
+        tree_hash=revision,
         root=Path(os.path.abspath(cache_root)) / source.id / revision,
         skills=skills,
     )
@@ -242,6 +236,7 @@ def _resolve_git(source: SourceSpec, cache_root: Path) -> ResolvedSource:
             source_type=source.type,
             location=source.location,
             revision=revision,
+            tree_hash=tree_hash,
             root=Path(os.path.abspath(cache_root)) / source.id / revision,
             skills=skills,
         )

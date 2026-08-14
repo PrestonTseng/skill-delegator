@@ -166,6 +166,11 @@ def test_malformed_grants_fail(tmp_path: Path, bad_grants: object) -> None:
         "example/a/./b",
         "example/a/../b",
         "example/a/../../outside",
+        "example/.hidden",
+        "example/a\\b",
+        "example/a\nb",
+        "example/a\x1fb",
+        "example/é",
     ),
 )
 def test_canonical_skill_ids_reject_malformed_path_segments(
@@ -185,7 +190,7 @@ def test_canonical_skill_ids_reject_malformed_path_segments(
 
     with pytest.raises(
         ConfigError,
-        match=rf"{filename.replace('.', r'\.')}: invalid canonical skill id",
+        match=rf"{filename.replace('.', r'\.')}(?: at .*does not match|: invalid canonical skill id)",
     ):
         load_config(config_dir)
 

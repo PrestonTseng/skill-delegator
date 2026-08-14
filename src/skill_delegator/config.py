@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
 
 from skill_delegator.errors import ConfigError
+from skill_delegator.identifiers import is_canonical_id
 from skill_delegator.models import AuthorityConfig, PoolSpec, SourceSpec, TargetSpec
 from skill_delegator.schema_validation import schema_error_location, schema_errors
 
@@ -20,8 +20,6 @@ _CONFIG_SCHEMAS = {
     "delegations.yaml": "delegations.schema.json",
     "skill-lock.yaml": "lock.schema.json",
 }
-_CANONICAL_SOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9-]*$")
-_CANONICAL_SEGMENT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 class _UniqueKeySafeLoader(yaml.SafeLoader):
@@ -115,17 +113,7 @@ def _resolve(config_dir: Path, value: str) -> Path:
 
 def _validate_canonical_ids(values: list[str], filename: str) -> None:
     for value in values:
-        parts = value.split("/")
-        valid = (
-            len(parts) >= 2
-            and _CANONICAL_SOURCE_PATTERN.fullmatch(parts[0]) is not None
-            and all(
-                part not in {"", ".", ".."}
-                and _CANONICAL_SEGMENT_PATTERN.fullmatch(part) is not None
-                for part in parts[1:]
-            )
-        )
-        if not valid:
+        if not is_canonical_id(value):
             raise ConfigError(f"{filename}: invalid canonical skill id: {value!r}")
 
 

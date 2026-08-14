@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import fcntl
 import json
+import math
 import os
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
@@ -143,6 +144,45 @@ def test_lock_contention_times_out_without_link_mutation(tmp_path: Path) -> None
     try:
         with pytest.raises(ApplyError, match="lock timeout"):
             apply_plan(plan, lock_timeout=0.01)
+    finally:
+        fcntl.flock(lock_stream.fileno(), fcntl.LOCK_UN)
+        lock_stream.close()
+    assert not (root / "source" / "one").exists()
+
+
+@pytest.mark.parametrize("timeout", (math.nan, math.inf, -math.inf, -0.01))
+def test_invalid_lock_timeout_is_rejected_before_any_target_creation(
+    tmp_path: Path, timeout: float
+) -> None:
+    root = tmp_path / "target"
+    plan = _plan(root, tmp_path / "cache", ("one",))
+    with pytest.raises(ApplyError, match="finite non-negative"):
+        apply_plan(plan, lock_timeout=timeout)
+    assert not root.exists()
+
+
+def test_nan_timeout_is_rejected_immediately_under_real_lock_contention(tmp_path: Path) -> None:
+    root = tmp_path / "target"
+    cache = tmp_path / "cache"
+    plan = _plan(root, cache, ("one",))
+    namespace = root / ".skill-delegator"
+    namespace.mkdir(parents=True)
+    (namespace / "managed.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "manager": "skill-delegator",
+                "cache_root": str(cache),
+                "entries": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    lock_stream = (namespace / "operation.lock").open("a+b")
+    fcntl.flock(lock_stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        with pytest.raises(ApplyError, match="finite non-negative"):
+            apply_plan(plan, lock_timeout=math.nan)
     finally:
         fcntl.flock(lock_stream.fileno(), fcntl.LOCK_UN)
         lock_stream.close()

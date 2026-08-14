@@ -14,4 +14,4 @@ Canonical IDs are `<source-id>/<path-relative-to-skill-root>`. Runtime names com
 
 `main-example` uses `fixture_policy: safe-main-example`. Its filesystem source is `../tests/fixtures/example-source`; its relative target roots normalize below ignored `../var/example-targets/`. Existing symlinked or non-directory target components are rejected. `validate` reads configuration only. `lock` may create ignored `var/cache`; `apply` creates only configured example targets and manager metadata; `verify` may create ignored `var/receipts`.
 
-Do not replace this policy with real authority paths on generic `main`. Copy and review configuration in an independent authority domain instead. See `../docs/configuration.md` for the complete contract.
+Do not replace this policy with real authority paths on generic `main`. Copy and review configuration in an independent authority domain instead. The complete contract is at `docs/configuration.md` in a source checkout and `skill_delegator/docs/configuration.md` in an installed wheel.

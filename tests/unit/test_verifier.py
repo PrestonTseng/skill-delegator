@@ -11,6 +11,7 @@ from skill_delegator.inventory import hash_tree
 from skill_delegator.models import (
     CurrentState,
     DesiredLink,
+    DesiredSource,
     DesiredState,
     DesiredTarget,
 )
@@ -136,6 +137,31 @@ def test_source_tamper_after_apply_is_drift(tmp_path: Path) -> None:
 
     assert result.result == "drift"
     assert [reason.code for reason in result.reasons] == ["source-content-hash-mismatch"]
+
+
+def test_whole_cached_snapshot_tamper_is_checked_once_even_when_ungranted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    desired, current, _, source = _fixture(tmp_path)
+    snapshot = source.parents[1]
+    expected = hash_tree(snapshot)
+    desired = DesiredState(desired.targets, (DesiredSource("source", snapshot, expected),))
+    (snapshot / "ungranted.txt").write_text("tamper", encoding="utf-8")
+    calls = 0
+    real_hash = verifier.hash_tree
+
+    def counted(path: Path) -> str:
+        nonlocal calls
+        if path == snapshot:
+            calls += 1
+        return real_hash(path)
+
+    monkeypatch.setattr(verifier, "hash_tree", counted)
+    result = verify_state(desired, current)
+
+    assert result.result == "drift"
+    assert "source-snapshot-hash-mismatch" in [reason.code for reason in result.reasons]
+    assert calls == 1
 
 
 def test_source_tamper_is_reported_even_when_target_scan_fails(tmp_path: Path) -> None:

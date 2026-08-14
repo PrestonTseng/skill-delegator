@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Sequence
 from dataclasses import replace
@@ -17,6 +18,7 @@ from skill_delegator.lockfile import build_lock, write_lock_atomic
 from skill_delegator.managed_state import TargetStateError, scan_target
 from skill_delegator.models import (
     CurrentState,
+    DesiredSource,
     DesiredState,
     DesiredTarget,
     LockedSkill,
@@ -120,9 +122,20 @@ def _desired_state_document(state: DesiredState) -> dict[str, object]:
 
 
 def _bind_expected_sources(state: DesiredState, lock: SkillLock, cache_root: Path) -> DesiredState:
-    revisions = {
-        source.source_id: source.resolved_commit or source.tree_hash for source in lock.sources
-    }
+    revisions = {}
+    desired_sources = []
+    for source in lock.sources:
+        revision = source.resolved_commit or source.tree_hash
+        if revision is None or source.tree_hash is None:
+            raise ResolutionError(
+                f"locked source {source.source_id} has no coherent immutable identity"
+            )
+        revisions[source.source_id] = revision
+        desired_sources.append(
+            DesiredSource(
+                source.source_id, cache_root / source.source_id / revision, source.tree_hash
+            )
+        )
     targets: list[DesiredTarget] = []
     for target in state.targets:
         links = []
@@ -134,7 +147,7 @@ def _bind_expected_sources(state: DesiredState, lock: SkillLock, cache_root: Pat
             expected = cache_root / source_id / revision / link.source_path
             links.append(replace(link, expected_source_path=expected))
         targets.append(replace(target, links=tuple(links)))
-    return DesiredState(tuple(targets))
+    return DesiredState(tuple(targets), tuple(desired_sources))
 
 
 def _render_plan(plan: ReconciliationPlan, *, json_output: bool) -> None:
@@ -203,6 +216,9 @@ def _render_update_checks(updates, *, json_output: bool) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if os.name != "posix":
+        print("skillctl error: V1 requires POSIX", file=sys.stderr)
+        return 2
     if args.command == "validate":
         try:
             config = load_config(args.config)

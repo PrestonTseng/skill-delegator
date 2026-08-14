@@ -67,10 +67,10 @@ def build_lock(config: AuthorityConfig, resolved_sources: tuple[ResolvedSource, 
             )
         if resolved.source_type == "git":
             resolved_commit = resolved.revision
-            tree_hash = None
+            tree_hash = resolved.tree_hash
         elif resolved.source_type == "filesystem":
             resolved_commit = None
-            tree_hash = resolved.revision
+            tree_hash = resolved.tree_hash
         else:
             raise SourceError(f"unsupported resolved source type: {resolved.source_type}")
         locked_sources.append(
@@ -98,11 +98,8 @@ def _document(lock: SkillLock) -> dict[str, object]:
             {
                 "source_id": source.source_id,
                 "type": source.source_type,
-                **(
-                    {"resolved_commit": source.resolved_commit}
-                    if source.resolved_commit is not None
-                    else {"tree_hash": source.tree_hash}
-                ),
+                **({"resolved_commit": source.resolved_commit} if source.resolved_commit else {}),
+                "tree_hash": source.tree_hash,
                 "skills": [
                     {
                         "canonical_id": skill.canonical_id,

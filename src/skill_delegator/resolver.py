@@ -7,6 +7,7 @@ import posixpath
 import re
 from pathlib import Path, PurePosixPath
 
+from skill_delegator.identifiers import canonical_relative_path, is_canonical_id, is_source_id
 from skill_delegator.models import (
     AuthorityConfig,
     DesiredLink,
@@ -44,16 +45,19 @@ def _normalized_relative(path: PurePosixPath, *, label: str) -> PurePosixPath:
 
 
 def _canonical_suffix(source_id: str, canonical_id: str) -> PurePosixPath:
+    if not is_source_id(source_id) or not is_canonical_id(canonical_id):
+        raise ResolutionError(
+            f"artifact {canonical_id} has invalid canonical source prefix or suffix"
+        )
     prefix, separator, suffix = canonical_id.partition("/")
     if prefix != source_id:
         raise ResolutionError(f"artifact {canonical_id} is enclosed by source {source_id}")
-    parts = suffix.split("/")
-    if separator != "/" or not suffix or any(part in {"", ".", ".."} for part in parts):
+    if separator != "/" or not suffix:
         raise ResolutionError(
             f"artifact {canonical_id} has invalid canonical source prefix or suffix"
         )
     relative = PurePosixPath(suffix)
-    if relative.is_absolute():
+    if not canonical_relative_path(relative):
         raise ResolutionError(
             f"artifact {canonical_id} has invalid canonical source prefix or suffix"
         )

@@ -105,12 +105,12 @@ def test_tree_hash_preserves_non_utf8_filename_and_symlink_bytes(tmp_path: Path)
     assert hash_tree(tmp_path) != first
 
 
-def test_discovers_skill_in_normal_unicode_directory(tmp_path: Path) -> None:
-    write_skill(tmp_path, "skills/café")
+@pytest.mark.parametrize("name", ("bad\nname", "bad\x01name", ".hidden", "café"))
+def test_discovery_rejects_noncanonical_skill_directory_segments(tmp_path: Path, name: str) -> None:
+    write_skill(tmp_path, f"skills/{name}")
 
-    artifacts = discover_skills(tmp_path, PurePosixPath("skills"))
-
-    assert artifacts[0].relative_path == PurePosixPath("café")
+    with pytest.raises(SourceError, match="skill path cannot form a canonical id"):
+        discover_skills(tmp_path, PurePosixPath("skills"))
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX byte-oriented filenames")

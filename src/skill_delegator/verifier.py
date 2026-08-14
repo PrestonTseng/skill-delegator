@@ -10,7 +10,7 @@ from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
 from skill_delegator.errors import SourceError
-from skill_delegator.inventory import hash_tree, inspect_skill
+from skill_delegator.inventory import hash_tree, inspect_skill, validate_snapshot_tree
 from skill_delegator.managed_state import TargetStateError, scan_target, target_fingerprint
 from skill_delegator.models import (
     AuthorityConfig,
@@ -21,6 +21,7 @@ from skill_delegator.models import (
     LockedSourceIdentity,
     OperationSummary,
     SkillLock,
+    SourceTreeEvidence,
     TargetFingerprint,
     TargetSpec,
     VerificationReason,
@@ -148,6 +149,8 @@ def verify_state(desired: DesiredState, current: CurrentState) -> VerificationRe
     desired_links = sum(len(target.links) for target in desired.targets)
     verified_links = 0
     cache_root = current.expected_cache_root
+    source_tree_evidence: list[SourceTreeEvidence] = []
+    snapshot_clean: dict[str, bool] = {}
     if cache_root is None or not cache_root.is_absolute():
         reasons.append(
             _reason(
@@ -158,6 +161,63 @@ def verify_state(desired: DesiredState, current: CurrentState) -> VerificationRe
                 "exact absolute cache authority is required",
             )
         )
+
+    seen_source_ids: set[str] = set()
+    for source in sorted(desired.sources, key=lambda item: item.source_id):
+        if source.source_id in seen_source_ids:
+            reasons.append(
+                _reason(
+                    "duplicate-desired-source",
+                    "invalid",
+                    None,
+                    None,
+                    "desired source identifiers must be unique",
+                )
+            )
+            snapshot_clean[source.source_id] = False
+            continue
+        seen_source_ids.add(source.source_id)
+        if cache_root is None or not _lexical_real_directory(source.root, cache_root):
+            reasons.append(
+                _reason(
+                    "source-snapshot-invalid",
+                    "invalid",
+                    None,
+                    None,
+                    f"cached snapshot is absent, symlinked, or outside cache: {source.source_id}",
+                )
+            )
+            snapshot_clean[source.source_id] = False
+            continue
+        try:
+            validate_snapshot_tree(source.root)
+            actual_tree_hash = hash_tree(source.root)
+        except (OSError, SourceError):
+            reasons.append(
+                _reason(
+                    "source-snapshot-invalid",
+                    "invalid",
+                    None,
+                    None,
+                    f"cached snapshot tree is malformed or unsafe: {source.source_id}",
+                )
+            )
+            snapshot_clean[source.source_id] = False
+            continue
+        source_tree_evidence.append(SourceTreeEvidence(source.source_id, actual_tree_hash))
+        if actual_tree_hash != source.tree_hash:
+            reasons.append(
+                _reason(
+                    "source-snapshot-hash-mismatch",
+                    "drift",
+                    None,
+                    None,
+                    f"whole cached snapshot differs from exact lock: {source.source_id}",
+                )
+            )
+            snapshot_clean[source.source_id] = False
+        else:
+            snapshot_clean[source.source_id] = True
 
     seen_target_ids: set[str] = set()
     for target in sorted(desired.targets, key=lambda item: item.id):
@@ -363,7 +423,14 @@ def verify_state(desired: DesiredState, current: CurrentState) -> VerificationRe
                         "manager metadata differs from desired lock evidence",
                     )
                 )
-            if not target_issue and source_clean.get(artifact_id, False) and len(reasons) == before:
+            source_id = artifact_id.split("/", 1)[0]
+            whole_snapshot_clean = not desired.sources or snapshot_clean.get(source_id, False)
+            if (
+                not target_issue
+                and whole_snapshot_clean
+                and source_clean.get(artifact_id, False)
+                and len(reasons) == before
+            ):
                 verified_links += 1
 
     reasons_tuple = tuple(
@@ -388,6 +455,7 @@ def verify_state(desired: DesiredState, current: CurrentState) -> VerificationRe
         OperationSummary(
             len(desired.targets), desired_links, verified_links, drift_count, invalid_count
         ),
+        source_tree_evidence=tuple(sorted(source_tree_evidence, key=lambda item: item.source_id)),
     )
 
 
@@ -399,7 +467,7 @@ _CONFIG_INPUTS = (
     "sources.yaml",
 )
 _MAX_CONFIG_BYTES = 16 * 1024 * 1024
-_CONFIG_DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0)
+_CONFIG_DIR_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
 if hasattr(os, "O_NOFOLLOW"):
     _CONFIG_DIR_FLAGS |= os.O_NOFOLLOW
 _close_config_descriptor = os.close
@@ -631,17 +699,21 @@ def bind_verification_evidence(
         for name in _CONFIG_INPUTS
     )
     locked_sources: list[LockedSourceIdentity] = []
+    fresh_trees = {item.source_id: item.sha256 for item in result.source_tree_evidence}
     for source in sorted(lock.sources, key=lambda item: item.source_id):
         if source.resolved_commit is not None:
             kind = "resolved_commit"
             revision = source.resolved_commit
-            tree_identity = None
         elif source.tree_hash is not None:
             kind = "tree_hash"
             revision = source.tree_hash
-            tree_identity = source.tree_hash
         else:
             raise ValueError(f"locked source has no immutable identity: {source.source_id}")
+        tree_identity = fresh_trees.get(source.source_id)
+        if source.tree_hash is None or tree_identity is None:
+            raise ValueError(
+                f"locked source lacks fresh whole-snapshot evidence: {source.source_id}"
+            )
         locked_sources.append(
             LockedSourceIdentity(
                 source.source_id,
