@@ -147,6 +147,7 @@ class ManagedEntry:
     relative_path: PurePosixPath
     source_path: Path
     content_sha256: str
+    raw_link_target: str | None = None
 
 
 @dataclass(frozen=True)
@@ -167,6 +168,7 @@ class CurrentTargetState:
     managed: tuple[ManagedEntry, ...]
     unmanaged: tuple[UnmanagedEntry, ...]
     cache_root: Path | None = None
+    root_exists: bool = True
 
 
 @dataclass(frozen=True)
@@ -191,11 +193,23 @@ class PlanOperation:
 
 
 @dataclass(frozen=True)
+class PlanTarget:
+    """Apply authority bound into an immutable reviewed plan."""
+
+    id: str
+    root: Path
+    cache_root: Path
+    current_fingerprint: str
+    desired_entries: tuple[ManagedEntry, ...]
+
+
+@dataclass(frozen=True)
 class ReconciliationPlan:
     """Immutable plan; blockers prohibit every mutating operation."""
 
     operations: tuple[PlanOperation, ...]
     blocked: tuple[str, ...]
+    targets: tuple[PlanTarget, ...] = ()
 
     @property
     def has_changes(self) -> bool:

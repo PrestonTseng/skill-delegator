@@ -25,6 +25,7 @@ from skill_delegator.models import (
     SkillLock,
 )
 from skill_delegator.planner import build_plan, plan_json, plan_text
+from skill_delegator.reconciler import ApplyError, apply_plan
 from skill_delegator.resolver import ResolutionError, resolve_desired_state
 from skill_delegator.source_store import resolve_sources
 
@@ -44,6 +45,10 @@ def build_parser() -> argparse.ArgumentParser:
     plan = subparsers.add_parser("plan", help="scan targets and plan without applying changes")
     plan.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     plan.add_argument("--json", action="store_true")
+    apply = subparsers.add_parser("apply", help="transactionally apply the validated plan")
+    apply.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
+    apply.add_argument("--yes", action="store_true", help="confirm plans containing REMOVE")
+    apply.add_argument("--lock-timeout", type=float, default=5.0, metavar="SECONDS")
     return parser
 
 
@@ -179,6 +184,42 @@ def main(argv: Sequence[str] | None = None) -> int:
         if plan.blocked:
             return 3
         return 1 if plan.has_changes else 0
+    if args.command == "apply":
+        try:
+            config_dir = args.config.resolve(strict=False)
+            config = load_config(config_dir)
+            lock = _load_validated_lock(config_dir)
+            desired = resolve_desired_state(config, lock)
+            cache_root = config_dir.parent / "var" / "cache" / "sources"
+            desired = _bind_expected_sources(desired, lock, cache_root)
+            current = CurrentState(
+                tuple(scan_target(target) for target in config.targets), cache_root
+            )
+            plan = build_plan(desired, current)
+        except TargetStateError as error:
+            print(f"Apply blocked: {error}", file=sys.stderr)
+            return 3
+        except (ConfigError, OSError, ResolutionError) as error:
+            print(f"Apply error: {error}", file=sys.stderr)
+            return 2
+        if plan.blocked:
+            print(f"Apply blocked: {plan.blocked[0]}", file=sys.stderr)
+            return 3
+        if any(operation.action == "REMOVE" for operation in plan.operations) and not args.yes:
+            print("Apply refused: plan contains REMOVE; pass --yes to confirm", file=sys.stderr)
+            return 4
+        try:
+            result = apply_plan(plan, lock_timeout=args.lock_timeout)
+        except ApplyError as error:
+            print(f"Apply error: {error}", file=sys.stderr)
+            return 5
+        if result.changed == 0:
+            print("Already converged")
+        else:
+            change_word = "change" if result.changed == 1 else "changes"
+            target_word = "target" if result.targets == 1 else "targets"
+            print(f"Applied {result.changed} {change_word} to {result.targets} {target_word}")
+        return 0
     return 2
 
 

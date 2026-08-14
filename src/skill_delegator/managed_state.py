@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
@@ -110,6 +111,20 @@ def _parse_managed(root: Path) -> tuple[tuple[ManagedEntry, ...], Path | None]:
         raise TargetStateError(f"manager metadata path is not a directory: {namespace}")
     metadata_path = namespace / "managed.json"
     if not os.path.lexists(metadata_path):
+        failure_path = namespace / "failure.json"
+        if os.path.lexists(failure_path):
+            failure = _read_metadata(failure_path)
+            if (
+                set(failure) == {"status", "phase", "error", "rollback_errors"}
+                and failure["status"] == "failed"
+                and all(isinstance(failure[key], str) for key in ("phase", "error"))
+                and all(len(failure[key]) <= 500 for key in ("phase", "error"))
+                and isinstance(failure["rollback_errors"], list)
+                and len(failure["rollback_errors"]) <= 10
+                and all(isinstance(item, str) for item in failure["rollback_errors"])
+                and all(len(item) <= 500 for item in failure["rollback_errors"])
+            ):
+                return (), None
         raise TargetStateError(f"manager metadata directory has no managed.json: {namespace}")
     document = _read_metadata(metadata_path)
     _validate_receipt_schema(document)
@@ -190,7 +205,9 @@ def _parse_managed(root: Path) -> tuple[tuple[ManagedEntry, ...], Path | None]:
             raise TargetStateError(f"broken managed link: {link_path}")
         if actual_target != source_path:
             raise TargetStateError(f"managed link does not match manager metadata: {link_path}")
-        managed.append(ManagedEntry(artifact_id, artifact, source_path, digest))
+        managed.append(
+            ManagedEntry(artifact_id, artifact, source_path, digest, os.readlink(link_path))
+        )
     return tuple(sorted(managed, key=lambda item: item.artifact_id)), cache_root
 
 
@@ -259,6 +276,37 @@ def scan_target(target: TargetSpec) -> CurrentTargetState:
 
     root = Path(os.path.abspath(target.root))
     if not _target_root_exists(root):
-        return CurrentTargetState(target.id, root, (), ())
+        return CurrentTargetState(target.id, root, (), (), root_exists=False)
     managed, cache_root = _parse_managed(root)
     return CurrentTargetState(target.id, root, managed, _scan_unmanaged(root, managed), cache_root)
+
+
+def target_fingerprint(state: CurrentTargetState) -> str:
+    """Hash the complete lexical state used to authorize an apply transaction."""
+
+    document = {
+        "id": state.id,
+        "root": str(state.root),
+        "root_exists": state.root_exists,
+        "cache_root": str(state.cache_root) if state.cache_root is not None else None,
+        "managed": [
+            {
+                "artifact_id": entry.artifact_id,
+                "path": entry.relative_path.as_posix(),
+                "source": str(entry.source_path),
+                "sha256": entry.content_sha256,
+                "raw_target": entry.raw_link_target,
+            }
+            for entry in state.managed
+        ],
+        "unmanaged": [
+            {
+                "path": entry.relative_path.as_posix(),
+                "kind": entry.kind,
+                "raw_target": entry.link_target,
+            }
+            for entry in state.unmanaged
+        ],
+    }
+    payload = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()

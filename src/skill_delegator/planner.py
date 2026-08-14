@@ -7,10 +7,13 @@ import os
 import stat
 from pathlib import Path, PurePosixPath
 
+from skill_delegator.managed_state import target_fingerprint
 from skill_delegator.models import (
     CurrentState,
     DesiredState,
+    ManagedEntry,
     PlanOperation,
+    PlanTarget,
     ReconciliationPlan,
 )
 
@@ -65,6 +68,7 @@ def build_plan(desired: DesiredState, current: CurrentState) -> ReconciliationPl
         blockers.append(f"desired/current target sets differ: missing={missing}, extra={extra}")
 
     operations: list[PlanOperation] = []
+    plan_targets: list[PlanTarget] = []
     for target_id in sorted(set(desired_targets) & set(current_targets)):
         desired_target = desired_targets[target_id]
         current_target = current_targets[target_id]
@@ -80,6 +84,26 @@ def build_plan(desired: DesiredState, current: CurrentState) -> ReconciliationPl
             if current.expected_cache_root is not None
             else None
         )
+        if expected_cache_root is not None:
+            desired_entries = tuple(
+                ManagedEntry(
+                    link.artifact_id,
+                    PurePosixPath(link.artifact_id),
+                    link.expected_source_path,
+                    link.content_sha256,
+                )
+                for link in sorted(desired_target.links, key=lambda item: item.artifact_id)
+                if link.expected_source_path is not None
+            )
+            plan_targets.append(
+                PlanTarget(
+                    target_id,
+                    desired_root,
+                    expected_cache_root,
+                    target_fingerprint(current_target),
+                    desired_entries,
+                )
+            )
         if (
             expected_cache_root is not None
             and current_target.cache_root is not None
@@ -225,7 +249,11 @@ def build_plan(desired: DesiredState, current: CurrentState) -> ReconciliationPl
     unique_blockers = tuple(sorted(set(blockers)))
     if unique_blockers:
         operations = [operation for operation in operations if operation.action not in _MUTATIONS]
-    return ReconciliationPlan(tuple(sorted(operations, key=_operation_key)), unique_blockers)
+    return ReconciliationPlan(
+        tuple(sorted(operations, key=_operation_key)),
+        unique_blockers,
+        tuple(sorted(plan_targets, key=lambda target: (str(target.root), target.id))),
+    )
 
 
 def _operation_document(operation: PlanOperation) -> dict[str, object]:
