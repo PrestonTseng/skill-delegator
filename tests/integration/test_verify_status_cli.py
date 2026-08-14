@@ -8,6 +8,7 @@ from pathlib import Path
 
 import yaml
 
+from skill_delegator import receipts
 from skill_delegator.cli import main
 
 
@@ -210,3 +211,131 @@ def test_untracked_nested_config_does_not_capture_unrelated_ancestor_commit(
         "available": False,
         "commit": None,
     }
+
+
+def test_dirty_tracked_config_bytes_make_repository_commit_unavailable(
+    tmp_path: Path, capsys
+) -> None:
+    project = tmp_path / "repository"
+    config = _write_config(project, initialize_git=True)
+    capsys.readouterr()
+    assert main(["apply", "--config", str(config)]) == 0
+    capsys.readouterr()
+    with (config / "authority.yaml").open("a", encoding="utf-8") as stream:
+        stream.write("# dirty current bytes\n")
+    assert main(["verify", "--config", str(config)]) == 0
+    receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
+    assert json.loads(receipt.read_text())["repository"] == {"available": False, "commit": None}
+
+
+def test_symlinked_tracked_config_input_never_hashes_external_bytes(tmp_path: Path, capsys) -> None:
+    project = tmp_path / "repository"
+    config = _write_config(project, initialize_git=True)
+    external = tmp_path / "external-authority.yaml"
+    external.write_bytes((config / "authority.yaml").read_bytes())
+    (config / "authority.yaml").unlink()
+    (config / "authority.yaml").symlink_to(external)
+    capsys.readouterr()
+
+    assert main(["verify", "--config", str(config)]) == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "regular file" in output.err
+    assert "Traceback" not in output.err
+    assert not (project / "var" / "receipts").exists()
+
+
+def test_commit_with_tracked_symlink_entry_is_explicitly_unavailable(
+    tmp_path: Path, capsys
+) -> None:
+    project = tmp_path / "repository"
+    config = _write_config(project, initialize_git=True)
+    authority_bytes = (config / "authority.yaml").read_bytes()
+    external = tmp_path / "external-authority.yaml"
+    external.write_bytes(authority_bytes)
+    (config / "authority.yaml").unlink()
+    (config / "authority.yaml").symlink_to(external)
+    _git(project, "add", "config/authority.yaml")
+    _git(project, "commit", "-qm", "track authority symlink")
+    (config / "authority.yaml").unlink()
+    (config / "authority.yaml").write_bytes(authority_bytes)
+    capsys.readouterr()
+    assert main(["apply", "--config", str(config)]) == 0
+    capsys.readouterr()
+
+    assert main(["verify", "--config", str(config)]) == 0
+    receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
+    assert json.loads(receipt.read_text())["repository"] == {"available": False, "commit": None}
+
+
+def test_commit_binding_requires_git_blob_bytes_to_equal_current_bytes(
+    tmp_path: Path, capsys
+) -> None:
+    project = tmp_path / "repository"
+    config = _write_config(project, initialize_git=True)
+    capsys.readouterr()
+    assert main(["apply", "--config", str(config)]) == 0
+    capsys.readouterr()
+    with (config / "authority.yaml").open("a", encoding="utf-8") as stream:
+        stream.write("# differs from commit blob\n")
+    assert main(["verify", "--config", str(config)]) == 0
+    receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
+    document = json.loads(receipt.read_text())
+    current_hash = hashlib.sha256((config / "authority.yaml").read_bytes()).hexdigest()
+    committed = _git(project, "show", "HEAD:config/authority.yaml").encode()
+    assert hashlib.sha256(committed).hexdigest() != current_hash
+    assert document["repository"] == {"available": False, "commit": None}
+
+
+def test_receipt_ancestor_filesystem_failures_are_bounded_by_cli(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    for failure in ("fsync", "open", "close"):
+        project = tmp_path / failure / "project"
+        config = _write_config(project)
+        capsys.readouterr()
+        assert main(["apply", "--config", str(config)]) == 0
+        capsys.readouterr()
+        real_fsync, real_open, real_close = receipts.os.fsync, receipts.os.open, receipts.os.close
+        fired = False
+
+        def fail_fsync(fd, _failure=failure, _real_fsync=real_fsync):
+            nonlocal fired
+            if _failure == "fsync" and not fired:
+                fired = True
+                raise OSError("injected ancestor fsync failure")
+            return _real_fsync(fd)
+
+        def fail_open(
+            path, flags, mode=0o777, *, dir_fd=None, _failure=failure, _real_open=real_open
+        ):
+            nonlocal fired
+            if _failure == "open" and path == "receipts" and not fired:
+                fired = True
+                raise OSError("injected ancestor open failure")
+            return _real_open(path, flags, mode, dir_fd=dir_fd)
+
+        def fail_close(fd, _failure=failure, _real_close=real_close):
+            nonlocal fired
+            descriptor_path = os.readlink(f"/proc/self/fd/{fd}")
+            if _failure == "close" and not fired and descriptor_path == "/":
+                fired = True
+                _real_close(fd)
+                raise OSError("injected ancestor close failure")
+            return _real_close(fd)
+
+        monkeypatch.setattr(receipts.os, "fsync", fail_fsync)
+        monkeypatch.setattr(receipts.os, "open", fail_open)
+        monkeypatch.setattr(receipts.os, "close", fail_close)
+        try:
+            assert main(["verify", "--config", str(config)]) == 3
+            output = capsys.readouterr()
+            assert fired
+            assert output.out == ""
+            assert output.err.startswith("Verify blocked:")
+            assert "Traceback" not in output.err
+            assert not list((project / "var" / "receipts").glob("*.json"))
+        finally:
+            monkeypatch.setattr(receipts.os, "fsync", real_fsync)
+            monkeypatch.setattr(receipts.os, "open", real_open)
+            monkeypatch.setattr(receipts.os, "close", real_close)

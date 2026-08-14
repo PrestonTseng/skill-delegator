@@ -25,16 +25,14 @@
       "type": "array",
       "minItems": 5,
       "maxItems": 5,
-      "uniqueItems": true,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["name", "sha256"],
-        "properties": {
-          "name": {"enum": ["authority.yaml", "delegations.yaml", "pool.yaml", "skill-lock.yaml", "sources.yaml"]},
-          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
-        }
-      }
+      "prefixItems": [
+        {"$ref": "#/$defs/configHash", "properties": {"name": {"const": "authority.yaml"}}},
+        {"$ref": "#/$defs/configHash", "properties": {"name": {"const": "delegations.yaml"}}},
+        {"$ref": "#/$defs/configHash", "properties": {"name": {"const": "pool.yaml"}}},
+        {"$ref": "#/$defs/configHash", "properties": {"name": {"const": "skill-lock.yaml"}}},
+        {"$ref": "#/$defs/configHash", "properties": {"name": {"const": "sources.yaml"}}}
+      ],
+      "items": false
     },
     "locked_sources": {
       "type": "array",
@@ -47,11 +45,25 @@
           "type": {"enum": ["git", "filesystem"]},
           "revision_kind": {"enum": ["resolved_commit", "tree_hash"]},
           "revision": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
-          "tree_identity": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40,64}$"}
+          "tree_identity": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
         },
-        "allOf": [
-          {"if": {"properties": {"revision_kind": {"const": "resolved_commit"}}}, "then": {"properties": {"tree_identity": {"const": null}}}},
-          {"if": {"properties": {"revision_kind": {"const": "tree_hash"}}}, "then": {"properties": {"tree_identity": {"type": "string"}}}}
+        "oneOf": [
+          {
+            "properties": {
+              "type": {"const": "git"},
+              "revision_kind": {"const": "resolved_commit"},
+              "revision": {"pattern": "^[0-9a-f]{40,64}$"},
+              "tree_identity": {"const": null}
+            }
+          },
+          {
+            "properties": {
+              "type": {"const": "filesystem"},
+              "revision_kind": {"const": "tree_hash"},
+              "revision": {"pattern": "^[0-9a-f]{64}$"},
+              "tree_identity": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            }
+          }
         ]
       }
     },
@@ -93,6 +105,17 @@
           "target_id": {"type": "string", "minLength": 1, "maxLength": 128},
           "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
         }
+      }
+    }
+  },
+  "$defs": {
+    "configHash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256"],
+      "properties": {
+        "name": {"enum": ["authority.yaml", "delegations.yaml", "pool.yaml", "skill-lock.yaml", "sources.yaml"]},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
       }
     }
   }

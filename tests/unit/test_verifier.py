@@ -93,6 +93,23 @@ def test_source_tamper_after_apply_is_drift(tmp_path: Path) -> None:
     assert [reason.code for reason in result.reasons] == ["source-content-hash-mismatch"]
 
 
+def test_source_tamper_is_reported_even_when_target_scan_fails(tmp_path: Path) -> None:
+    desired, current, target, source = _fixture(tmp_path)
+    (source / "SKILL.md").write_text(
+        "---\nname: renamed\ndescription: changed\n---\n", encoding="utf-8"
+    )
+    (target / "source" / "one").unlink()
+
+    result = verify_state(desired, current)
+
+    assert [reason.code for reason in result.reasons] == [
+        "managed-link-missing",
+        "runtime-name-mismatch",
+        "source-content-hash-mismatch",
+    ]
+    assert result.operation_summary.verified_links == 0
+
+
 def test_missing_broken_and_wrong_managed_links_are_ordinary_drift(tmp_path: Path) -> None:
     for mode in ("missing", "broken", "wrong"):
         case = tmp_path / mode

@@ -174,3 +174,78 @@ def test_malformed_receipt_fails_public_schema() -> None:
     )
     assert errors
     assert errors[0].validator == "additionalProperties"
+
+
+@pytest.mark.parametrize(
+    "config_hashes",
+    (
+        (
+            ConfigFileHash("authority.yaml", _SHA_A),
+            ConfigFileHash("authority.yaml", _SHA_B),
+            ConfigFileHash("pool.yaml", _SHA_A),
+            ConfigFileHash("skill-lock.yaml", _SHA_B),
+            ConfigFileHash("sources.yaml", _SHA_A),
+        ),
+        _result().config_hashes[:-1],
+    ),
+)
+def test_write_receipt_rejects_duplicate_or_missing_config_names(
+    tmp_path: Path, config_hashes: tuple[ConfigFileHash, ...]
+) -> None:
+    with pytest.raises(ReceiptError, match="config_hashes"):
+        write_receipt(
+            replace(_result(), config_hashes=config_hashes), tmp_path / "var" / "receipts"
+        )
+
+
+@pytest.mark.parametrize(
+    "identity",
+    (
+        LockedSourceIdentity("source", "git", "tree_hash", _SHA_A, _SHA_A),
+        LockedSourceIdentity("source", "git", "resolved_commit", _SHA_A, _SHA_A),
+        LockedSourceIdentity("source", "filesystem", "resolved_commit", _SHA_A, None),
+        LockedSourceIdentity("source", "filesystem", "tree_hash", _SHA_A, _SHA_B),
+    ),
+)
+def test_write_receipt_rejects_incoherent_source_identities(
+    tmp_path: Path, identity: LockedSourceIdentity
+) -> None:
+    with pytest.raises(ReceiptError, match="locked_sources"):
+        write_receipt(replace(_result(), locked_sources=(identity,)), tmp_path / "var" / "receipts")
+
+
+def test_write_receipt_rejects_duplicate_locked_source_ids(tmp_path: Path) -> None:
+    duplicate = LockedSourceIdentity("source", "git", "resolved_commit", "c" * 40, None)
+    with pytest.raises(ReceiptError, match="locked_sources"):
+        write_receipt(
+            replace(_result(), locked_sources=(_result().locked_sources[0], duplicate)),
+            tmp_path / "var" / "receipts",
+        )
+
+
+def test_schema_rejects_duplicate_config_names_and_incoherent_git_identity() -> None:
+    validator = jsonschema.Draft202012Validator(
+        json.loads(schema_text("verification-receipt.schema.json"))
+    )
+    duplicate_names = receipt_document(_result())
+    duplicate_names["config_hashes"][1]["name"] = "authority.yaml"
+    incoherent_git = receipt_document(_result())
+    incoherent_git["locked_sources"] = [
+        {
+            "source_id": "source",
+            "type": "git",
+            "revision_kind": "tree_hash",
+            "revision": _SHA_A,
+            "tree_identity": _SHA_A,
+        }
+    ]
+
+    assert list(validator.iter_errors(duplicate_names))
+    assert list(validator.iter_errors(incoherent_git))
+
+
+def test_write_receipt_rejects_semantically_impossible_operation_evidence(tmp_path: Path) -> None:
+    impossible = replace(_result(), operation_summary=OperationSummary(1, 1, 2, 0, 0))
+
+    with pytest.raises(ReceiptError, match="operation evidence"):
+        write_receipt(impossible, tmp_path / "var" / "receipts")
