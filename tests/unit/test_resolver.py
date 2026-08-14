@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
+import pytest
+
 from skill_delegator.models import (
     AuthorityConfig,
     LockedSkill,
@@ -12,7 +14,7 @@ from skill_delegator.models import (
     SourceSpec,
     TargetSpec,
 )
-from skill_delegator.resolver import resolve_desired_state
+from skill_delegator.resolver import ResolutionError, resolve_desired_state
 
 _SHA_A = "a" * 64
 _SHA_B = "b" * 64
@@ -55,7 +57,7 @@ def test_resolves_valid_subset_with_exact_desired_link_fields(tmp_path: Path) ->
     )
     lock = SkillLock(
         1,
-        (source("alpha", skill("alpha/nested/tool", "tool", "skills/nested/tool")),),
+        (source("alpha", skill("alpha/nested/tool", "tool", "nested/tool")),),
     )
 
     state = resolve_desired_state(authority, lock)
@@ -64,7 +66,7 @@ def test_resolves_valid_subset_with_exact_desired_link_fields(tmp_path: Path) ->
     assert state.targets[0].root == target.root
     assert state.targets[0].links[0].artifact_id == "alpha/nested/tool"
     assert state.targets[0].links[0].runtime_name == "tool"
-    assert state.targets[0].links[0].source_path == PurePosixPath("skills/nested/tool")
+    assert state.targets[0].links[0].source_path == PurePosixPath("nested/tool")
     assert state.targets[0].links[0].target_path == target.root / "alpha/nested/tool"
     assert state.targets[0].links[0].content_sha256 == _SHA_A
 
@@ -85,8 +87,8 @@ def test_output_order_is_independent_of_input_order(tmp_path: Path) -> None:
     lock = SkillLock(
         1,
         (
-            source("beta", skill("beta/z", "z", "root/z", _SHA_B)),
-            source("alpha", skill("alpha/a", "a", "root/a", _SHA_A)),
+            source("beta", skill("beta/z", "z", "z", _SHA_B)),
+            source("alpha", skill("alpha/a", "a", "a", _SHA_A)),
         ),
     )
 
@@ -103,3 +105,78 @@ def test_output_order_is_independent_of_input_order(tmp_path: Path) -> None:
     assert first == second
     assert tuple(target.id for target in first.targets) == ("a-target", "z-target")
     assert tuple(link.artifact_id for link in first.targets[1].links) == ("alpha/a", "beta/z")
+
+
+def test_rejects_configured_and_locked_source_set_mismatch_deterministically(
+    tmp_path: Path,
+) -> None:
+    authority = AuthorityConfig(
+        "authority",
+        True,
+        "none",
+        (
+            SourceSpec("alpha", "filesystem", tmp_path / "alpha", PurePosixPath(".")),
+            SourceSpec("beta", "filesystem", tmp_path / "beta", PurePosixPath(".")),
+        ),
+        (),
+        (),
+    )
+    lock = SkillLock(1, (source("gamma"), source("alpha")))
+
+    with pytest.raises(
+        ResolutionError,
+        match=r"locked source set differs from configuration: missing=\['beta'\], extra=\['gamma'\]",
+    ):
+        resolve_desired_state(authority, lock)
+
+
+def test_rejects_locked_source_type_mismatch(tmp_path: Path) -> None:
+    authority = config(tmp_path, pool=("alpha/tool",), targets=())
+    lock = SkillLock(
+        1,
+        (
+            LockedSource(
+                "alpha",
+                "git",
+                "f" * 40,
+                None,
+                (skill("alpha/tool", "tool", "tool"),),
+            ),
+        ),
+    )
+
+    with pytest.raises(
+        ResolutionError,
+        match="locked source alpha type 'git' does not match configured type 'filesystem'",
+    ):
+        resolve_desired_state(authority, lock)
+
+
+@pytest.mark.parametrize(
+    ("artifact_id", "path", "message"),
+    (
+        ("evil/tool", "tool", "artifact evil/tool is enclosed by source alpha"),
+        ("alpha/", "tool", "artifact alpha/ has invalid canonical source prefix or suffix"),
+        ("alpha/tool", "../tool", "locked path ../tool is outside configured skill root skills"),
+        (
+            "alpha/tool",
+            "skills/different",
+            "locked path skills/different does not match canonical suffix tool",
+        ),
+    ),
+)
+def test_rejects_artifact_authority_and_path_binding_mismatches(
+    tmp_path: Path, artifact_id: str, path: str, message: str
+) -> None:
+    authority = AuthorityConfig(
+        "authority",
+        True,
+        "none",
+        (SourceSpec("alpha", "filesystem", tmp_path / "alpha", PurePosixPath("skills")),),
+        (),
+        (),
+    )
+    lock = SkillLock(1, (source("alpha", skill(artifact_id, "tool", path)),))
+
+    with pytest.raises(ResolutionError, match=message):
+        resolve_desired_state(authority, lock)

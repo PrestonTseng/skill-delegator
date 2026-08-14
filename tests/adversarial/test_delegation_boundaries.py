@@ -28,13 +28,14 @@ _SHA = "a" * 64
 
 
 def authority(tmp_path: Path, pool: tuple[str, ...], grants: tuple[str, ...]) -> AuthorityConfig:
+    source_ids = sorted({item.split("/", 1)[0] for item in (*pool, *grants)})
     return AuthorityConfig(
         "test",
         True,
         "none",
-        (
-            SourceSpec("one", "filesystem", tmp_path / "one", PurePosixPath(".")),
-            SourceSpec("two", "filesystem", tmp_path / "two", PurePosixPath(".")),
+        tuple(
+            SourceSpec(item, "filesystem", tmp_path / item, PurePosixPath("."))
+            for item in source_ids
         ),
         tuple(PoolSpec(item) for item in pool),
         (TargetSpec("worker", tmp_path / "target", grants),),
@@ -61,7 +62,9 @@ def test_rejects_grant_absent_from_pool(tmp_path: Path) -> None:
 def test_rejects_grant_absent_from_lock(tmp_path: Path) -> None:
     config = authority(tmp_path, ("one/missing",), ("one/missing",))
     with pytest.raises(ResolutionError, match="absent from lock.*one/missing"):
-        resolve_desired_state(config, SkillLock(1, ()))
+        resolve_desired_state(
+            config, SkillLock(1, (LockedSource("one", "filesystem", None, "f" * 64, ()),))
+        )
 
 
 def test_rejects_duplicate_grants_even_when_models_bypass_yaml_schema(tmp_path: Path) -> None:
@@ -75,7 +78,7 @@ def test_rejects_duplicate_runtime_name_per_target_across_sources(tmp_path: Path
     config = authority(tmp_path, ("one/a", "two/b"), ("one/a", "two/b"))
     lock = SkillLock(
         1,
-        (locked("one", "one/a", "shared", "skills/a"), locked("two", "two/b", "shared", "b")),
+        (locked("one", "one/a", "shared", "a"), locked("two", "two/b", "shared", "b")),
     )
     with pytest.raises(ResolutionError, match="duplicate runtime name.*shared"):
         resolve_desired_state(config, lock)
@@ -84,24 +87,21 @@ def test_rejects_duplicate_runtime_name_per_target_across_sources(tmp_path: Path
 def test_rejects_normalized_target_escape(tmp_path: Path) -> None:
     config = authority(tmp_path, ("one/../../escape",), ("one/../../escape",))
     lock = SkillLock(1, (locked("one", "one/../../escape", "escape", "escape"),))
-    with pytest.raises(ResolutionError, match="outside target root"):
+    with pytest.raises(ResolutionError, match="invalid canonical|outside target root"):
         resolve_desired_state(config, lock)
 
 
 def test_rejects_normalized_target_path_collision(tmp_path: Path) -> None:
-    config = authority(tmp_path, ("one/a/../same", "one/same"), ("one/a/../same", "one/same"))
-    lock = SkillLock(
-        1,
-        (
-            replace(
-                locked("one", "one/a/../same", "first", "first"),
-                skills=(
-                    LockedSkill("one/a/../same", "first", PurePosixPath("first"), _SHA),
-                    LockedSkill("one/same", "second", PurePosixPath("second"), _SHA),
-                ),
-            ),
+    config = authority(tmp_path, ("one/same",), ("one/same",))
+    shared_root = tmp_path / "shared-target"
+    config = replace(
+        config,
+        targets=(
+            TargetSpec("first", shared_root, ("one/same",)),
+            TargetSpec("second", shared_root, ("one/same",)),
         ),
     )
+    lock = SkillLock(1, (locked("one", "one/same", "same", "same"),))
     with pytest.raises(ResolutionError, match="target path collision"):
         resolve_desired_state(config, lock)
 
@@ -154,3 +154,58 @@ def test_resolve_cli_json_is_repeatable_and_does_not_touch_target_roots(tmp_path
     assert [item["id"] for item in payload["targets"]] == ["reviewer", "worker"]
     assert all(item["links"][0]["artifact_id"] == "example/hello" for item in payload["targets"])
     assert {root: snapshot(root) for root in target_roots} == before
+
+
+@pytest.mark.parametrize(
+    ("lock_mutation", "message"),
+    (
+        ({"source_id": "evil"}, "missing=['example'], extra=['evil']"),
+        ({"canonical_id": "evil/hello"}, "artifact evil/hello is enclosed by source example"),
+        ({"path": "different"}, "locked path different does not match canonical suffix hello"),
+        ({"path": "../hello"}, "locked path ../hello is outside configured skill root ."),
+    ),
+    ids=("evil-source", "wrong-prefix", "wrong-relative-path", "path-escape"),
+)
+def test_resolve_cli_rejects_source_authority_binding_without_output_or_writes(
+    tmp_path: Path, lock_mutation: dict[str, str], message: str
+) -> None:
+    config_dir = tmp_path / "config"
+    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    lock_path = config_dir / "skill-lock.yaml"
+    document = yaml.safe_load(lock_path.read_text(encoding="utf-8"))
+    source = document["sources"][0]
+    skill = source["skills"][0]
+    if "source_id" in lock_mutation:
+        source["source_id"] = lock_mutation["source_id"]
+    if "canonical_id" in lock_mutation:
+        skill["canonical_id"] = lock_mutation["canonical_id"]
+    if "path" in lock_mutation:
+        skill["path"] = lock_mutation["path"]
+    lock_path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    target_roots = (
+        tmp_path / "var" / "example-targets" / "worker",
+        tmp_path / "var" / "example-targets" / "reviewer",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "skill_delegator.cli",
+            "resolve",
+            "--json",
+            "--config",
+            str(config_dir),
+        ],
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert message in result.stderr
+    assert len(result.stderr) <= 512
+    assert "Traceback" not in result.stderr
+    assert all(not root.exists() for root in target_roots)

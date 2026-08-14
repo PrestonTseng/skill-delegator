@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
+import posixpath
+from pathlib import Path, PurePosixPath
 
 from skill_delegator.models import (
     AuthorityConfig,
@@ -29,14 +30,87 @@ def _duplicates(values: tuple[str, ...]) -> list[str]:
     return sorted(duplicates)
 
 
-def _locked_skills(lock: SkillLock) -> dict[str, LockedSkill]:
+def _normalized_relative(path: PurePosixPath, *, label: str) -> PurePosixPath:
+    if path.is_absolute():
+        raise ResolutionError(f"{label} must be a confined relative path: {path}")
+    normalized = PurePosixPath(posixpath.normpath(path.as_posix()))
+    if normalized.parts and normalized.parts[0] == "..":
+        raise ResolutionError(f"{label} must be a confined relative path: {path}")
+    return normalized
+
+
+def _canonical_suffix(source_id: str, canonical_id: str) -> PurePosixPath:
+    prefix, separator, suffix = canonical_id.partition("/")
+    if prefix != source_id:
+        raise ResolutionError(f"artifact {canonical_id} is enclosed by source {source_id}")
+    parts = suffix.split("/")
+    if separator != "/" or not suffix or any(part in {"", ".", ".."} for part in parts):
+        raise ResolutionError(
+            f"artifact {canonical_id} has invalid canonical source prefix or suffix"
+        )
+    relative = PurePosixPath(suffix)
+    if relative.is_absolute():
+        raise ResolutionError(
+            f"artifact {canonical_id} has invalid canonical source prefix or suffix"
+        )
+    return relative
+
+
+def _validate_locked_path(
+    source_id: str, skill_root: PurePosixPath, skill: LockedSkill, suffix: PurePosixPath
+) -> None:
+    normalized_root = _normalized_relative(
+        skill_root, label=f"configured skill root for source {source_id}"
+    )
+    try:
+        normalized_path = _normalized_relative(skill.path, label=f"locked path {skill.path}")
+    except ResolutionError as error:
+        raise ResolutionError(
+            f"locked path {skill.path} is outside configured skill root {skill_root}"
+        ) from error
+    if not normalized_path.is_relative_to(normalized_root) or normalized_path == normalized_root:
+        raise ResolutionError(
+            f"locked path {skill.path} is outside configured skill root {skill_root}"
+        )
+    try:
+        relative = skill.path.relative_to(skill_root)
+    except ValueError as error:
+        raise ResolutionError(
+            f"locked path {skill.path} is outside configured skill root {skill_root}"
+        ) from error
+    if relative != suffix:
+        raise ResolutionError(f"locked path {skill.path} does not match canonical suffix {suffix}")
+
+
+def _locked_skills(config: AuthorityConfig, lock: SkillLock) -> dict[str, LockedSkill]:
+    configured = {source.id: source for source in config.sources}
+    if len(configured) != len(config.sources):
+        raise ResolutionError("duplicate configured source id")
+
     skills: dict[str, LockedSkill] = {}
-    source_ids: set[str] = set()
+    locked_source_ids: set[str] = set()
     for source in lock.sources:
-        if source.source_id in source_ids:
+        if source.source_id in locked_source_ids:
             raise ResolutionError(f"duplicate locked source id: {source.source_id}")
-        source_ids.add(source.source_id)
+        locked_source_ids.add(source.source_id)
+
+    missing = sorted(set(configured) - locked_source_ids)
+    extra = sorted(locked_source_ids - set(configured))
+    if missing or extra:
+        raise ResolutionError(
+            f"locked source set differs from configuration: missing={missing}, extra={extra}"
+        )
+
+    for source in lock.sources:
+        spec = configured[source.source_id]
+        if source.source_type != spec.type:
+            raise ResolutionError(
+                f"locked source {source.source_id} type {source.source_type!r} "
+                f"does not match configured type {spec.type!r}"
+            )
         for skill in source.skills:
+            suffix = _canonical_suffix(source.source_id, skill.canonical_id)
+            _validate_locked_path(source.source_id, spec.skill_root, skill, suffix)
             if skill.canonical_id in skills:
                 raise ResolutionError(f"duplicate locked artifact id: {skill.canonical_id}")
             skills[skill.canonical_id] = skill
@@ -61,7 +135,7 @@ def resolve_desired_state(config: AuthorityConfig, lock: SkillLock) -> DesiredSt
     if duplicate_pool:
         raise ResolutionError(f"duplicate pool grant: {', '.join(duplicate_pool)}")
     pool = set(pool_values)
-    locked = _locked_skills(lock)
+    locked = _locked_skills(config, lock)
 
     target_ids: set[str] = set()
     occupied_paths: dict[Path, tuple[str, str]] = {}
