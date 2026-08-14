@@ -91,6 +91,35 @@ A bounded follow-up closed the three Task 7 review defects without adding apply,
 - `skillctl validate --config config` -> **Valid configuration: 1 authority, 1 source, 1 pool entry, 2 targets**
 - Build to `/tmp/task7-fix-build` -> **sdist and wheel built successfully**
 
+## Final rollback-outcome closure
+
+The remaining rollback-operation ambiguity is closed by one explicit public-outcome state machine. After any post-publication error, the anchored public pathname is classified using both regular-file identity and exact bytes:
+
+- exact prior inode/bytes (or prior absence) reports the original bounded publication failure;
+- exact staged candidate inode/bytes is treated as a committed update and returns normally, including normal CLI proposal output;
+- every other state, including concurrent same-bytes/new-inode replacement or an unprovable/different-byte state, is preserved and reports `lock-rollback-unsafe`.
+
+Rollback replacement and rollback-directory-fsync failures are re-observed rather than guessed. Candidate-success cleanup removes the backup journal best-effort without touching the public candidate; unsafe outcomes retain any still-existing journal.
+
+### Final closure TDD evidence
+
+- RED: the five new focused regressions produced **4 failed, 1 passed**. Failures reproduced backup-restore failure leaving the candidate public, rollback-fsync failure leaving the candidate public, concurrent replacement during rollback fsync being misclassified, and CLI blocking despite exact candidate ownership. The already-correct prior-restored rollback-fsync case passed.
+- GREEN: the same five regressions produced **5 passed in 0.20s**.
+- Reviewer probe `/tmp/task7_rollback_failure_probe.py` -> `error=NO_ERROR`, `candidate_public=True`, `prior_restored=False`, `journals=[]`.
+
+### Fresh final verification
+
+- `uv lock --check` -> **Resolved 15 packages; exit 0**
+- `uv sync --frozen --python 3.12` -> **Checked 14 packages; exit 0**
+- Python gate -> **Python 3.12.13**
+- Focused Task 7/cache/lock gate -> **60 passed in 2.61s**
+- Full suite -> **280 passed in 11.03s**
+- `ruff format --check .` -> **42 files already formatted**
+- `ruff check .` -> **All checks passed**
+- `compileall` -> **exit 0**
+- `skillctl validate --config config` -> **Valid configuration: 1 authority, 1 source, 1 pool entry, 2 targets**
+- Build to `/tmp/task7-final-build` -> **sdist and wheel built successfully**
+
 ## Concerns
 
 The ancestor-replacement and concurrent-lock cases use deterministic checkpoint/fault injection. They verify the specified identities and rollback outcomes but are not a claim of exhaustive coverage for every possible OS-level interleaving. No external network, configured target apply, grant/pool/source edits, checked-in config update/apply, push, merge, Task 8 work, or `/opt/knowledge` access was used.

@@ -423,6 +423,150 @@ def test_lock_publication_directory_fsync_failure_restores_original_inode(
     assert path.stat().st_ino == inode
 
 
+def test_failed_backup_restore_commits_exact_public_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "one")
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("."), None)
+    lock = build_lock(config_for(source), resolve_sources(config_for(source), tmp_path / "cache"))
+    path = tmp_path / "skill-lock.yaml"
+    write_lock_atomic(path, lock)
+    candidate = _different_lock(lock)
+    candidate_bytes = serialize_lock(candidate)
+    original_fsync = os.fsync
+    original_replace = os.replace
+    candidate_inode = 0
+
+    def fail_publication_fsync(fd: int) -> None:
+        nonlocal candidate_inode
+        if stat.S_ISDIR(os.fstat(fd).st_mode) and candidate_inode == 0:
+            candidate_inode = path.stat().st_ino
+            raise OSError("injected publication fsync failure")
+        original_fsync(fd)
+
+    def fail_backup_restore(src, dst, *args, **kwargs):
+        if str(src).startswith(".skill-lock.yaml.backup-"):
+            raise OSError("injected backup restore failure")
+        return original_replace(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "fsync", fail_publication_fsync)
+    monkeypatch.setattr(os, "replace", fail_backup_restore)
+
+    write_lock_atomic(path, candidate)
+
+    assert path.read_bytes() == candidate_bytes
+    assert path.stat().st_ino == candidate_inode
+
+
+def test_failed_rollback_fsync_reports_failure_when_prior_inode_is_restored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "one")
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("."), None)
+    lock = build_lock(config_for(source), resolve_sources(config_for(source), tmp_path / "cache"))
+    path = tmp_path / "skill-lock.yaml"
+    write_lock_atomic(path, lock)
+    before = path.read_bytes()
+    inode = path.stat().st_ino
+    original_fsync = os.fsync
+    directory_calls = 0
+
+    def fail_publication_and_rollback_fsync(fd: int) -> None:
+        nonlocal directory_calls
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            directory_calls += 1
+            if directory_calls <= 2:
+                raise OSError("injected directory fsync failure")
+        original_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fail_publication_and_rollback_fsync)
+
+    with pytest.raises(SourceError, match="lock-publication-failed"):
+        write_lock_atomic(path, _different_lock(lock))
+
+    assert path.read_bytes() == before
+    assert path.stat().st_ino == inode
+
+
+def test_failed_rollback_fsync_commits_exact_candidate_left_public(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "one")
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("."), None)
+    lock = build_lock(config_for(source), resolve_sources(config_for(source), tmp_path / "cache"))
+    path = tmp_path / "skill-lock.yaml"
+    write_lock_atomic(path, lock)
+    candidate = _different_lock(lock)
+    candidate_bytes = serialize_lock(candidate)
+    original_fsync = os.fsync
+    original_replace = os.replace
+    directory_calls = 0
+    candidate_inode = 0
+
+    def fail_directory_fsync(fd: int) -> None:
+        nonlocal directory_calls, candidate_inode
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            directory_calls += 1
+            if directory_calls == 1:
+                candidate_inode = path.stat().st_ino
+            if directory_calls <= 2:
+                raise OSError("injected directory fsync failure")
+        original_fsync(fd)
+
+    def leave_candidate_on_restore(src, dst, *args, **kwargs):
+        if str(src).startswith(".skill-lock.yaml.backup-"):
+            return None
+        return original_replace(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "fsync", fail_directory_fsync)
+    monkeypatch.setattr(os, "replace", leave_candidate_on_restore)
+
+    write_lock_atomic(path, candidate)
+
+    assert path.read_bytes() == candidate_bytes
+    assert path.stat().st_ino == candidate_inode
+
+
+def test_failed_rollback_fsync_preserves_concurrent_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "one")
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("."), None)
+    lock = build_lock(config_for(source), resolve_sources(config_for(source), tmp_path / "cache"))
+    path = tmp_path / "skill-lock.yaml"
+    write_lock_atomic(path, lock)
+    candidate = _different_lock(lock)
+    candidate_bytes = serialize_lock(candidate)
+    original_fsync = os.fsync
+    directory_calls = 0
+    concurrent_inode = 0
+
+    def compete_during_rollback_fsync(fd: int) -> None:
+        nonlocal directory_calls, concurrent_inode
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            directory_calls += 1
+            if directory_calls == 2:
+                concurrent = tmp_path / "concurrent"
+                concurrent.write_bytes(candidate_bytes)
+                os.replace(concurrent, path)
+                concurrent_inode = path.stat().st_ino
+            if directory_calls <= 2:
+                raise OSError("injected directory fsync failure")
+        original_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", compete_during_rollback_fsync)
+
+    with pytest.raises(SourceError, match="lock-rollback-unsafe"):
+        write_lock_atomic(path, candidate)
+
+    assert path.read_bytes() == candidate_bytes
+    assert path.stat().st_ino == concurrent_inode
+
+
 def test_initial_lock_publication_failure_restores_absence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

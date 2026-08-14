@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import secrets
 import stat
+from enum import Enum
 from pathlib import Path, PurePosixPath
 
 import yaml
@@ -152,36 +153,78 @@ def _unique_name(prefix: str) -> str:
     return f".{prefix}-{secrets.token_hex(12)}"
 
 
+class _PublicOutcome(Enum):
+    PRIOR = "prior"
+    CANDIDATE = "candidate"
+    UNSAFE = "unsafe"
+
+
+def _observe_public_outcome(
+    parent: AnchoredDirectory,
+    name: str,
+    prior: tuple[bytes, os.stat_result] | None,
+    candidate_identity: tuple[int, int],
+    candidate_payload: bytes,
+) -> _PublicOutcome:
+    """Classify only an identity-and-bytes-proven public pathname state."""
+
+    try:
+        current = _read_file_at(parent, name)
+        if current is None:
+            try:
+                os.stat(name, dir_fd=parent.fd, follow_symlinks=False)
+            except FileNotFoundError:
+                return _PublicOutcome.PRIOR if prior is None else _PublicOutcome.UNSAFE
+            except OSError:
+                return _PublicOutcome.UNSAFE
+            return _PublicOutcome.UNSAFE
+        public = os.stat(name, dir_fd=parent.fd, follow_symlinks=False)
+    except OSError:
+        return _PublicOutcome.UNSAFE
+
+    opened_identity = (current[1].st_dev, current[1].st_ino)
+    if not stat.S_ISREG(public.st_mode) or (public.st_dev, public.st_ino) != opened_identity:
+        return _PublicOutcome.UNSAFE
+    if prior is not None and opened_identity == (prior[1].st_dev, prior[1].st_ino):
+        return _PublicOutcome.PRIOR if current[0] == prior[0] else _PublicOutcome.UNSAFE
+    if opened_identity == candidate_identity:
+        return (
+            _PublicOutcome.CANDIDATE if current[0] == candidate_payload else _PublicOutcome.UNSAFE
+        )
+    return _PublicOutcome.UNSAFE
+
+
 def _rollback_publication(
     parent: AnchoredDirectory,
     name: str,
     backup: str | None,
-    published_identity: tuple[int, int],
-) -> None:
-    try:
-        current = os.stat(name, dir_fd=parent.fd, follow_symlinks=False)
-    except OSError as error:
-        raise SourceError("lock-rollback-unsafe") from error
-    if not stat.S_ISREG(current.st_mode) or (current.st_dev, current.st_ino) != published_identity:
-        raise SourceError("lock-rollback-unsafe")
+    prior: tuple[bytes, os.stat_result] | None,
+    candidate_identity: tuple[int, int],
+    candidate_payload: bytes,
+) -> _PublicOutcome:
+    outcome = _observe_public_outcome(parent, name, prior, candidate_identity, candidate_payload)
+    if outcome is not _PublicOutcome.CANDIDATE:
+        return _PublicOutcome.UNSAFE
     try:
         if backup is None:
             os.unlink(name, dir_fd=parent.fd)
         else:
             os.replace(backup, name, src_dir_fd=parent.fd, dst_dir_fd=parent.fd)
         os.fsync(parent.fd)
-    except OSError as error:
-        raise SourceError("lock-publication-failed") from error
+    except OSError:
+        pass
+    return _observe_public_outcome(parent, name, prior, candidate_identity, candidate_payload)
 
 
 def write_lock_atomic(path: Path, lock: SkillLock) -> None:
-    """Publish canonical lock bytes, rolling back every reported publication failure."""
+    """Publish canonical bytes with an identity-proven public outcome."""
 
     payload = serialize_lock(lock)
     parent = open_anchored_directory(path.parent, description="lock-parent")
     stage: str | None = None
     backup: str | None = None
     published_identity: tuple[int, int] | None = None
+    existing: tuple[bytes, os.stat_result] | None = None
     committed = False
     try:
         existing = _read_file_at(parent, path.name)
@@ -236,18 +279,25 @@ def write_lock_atomic(path: Path, lock: SkillLock) -> None:
         os.fsync(parent.fd)
         parent.verify(description="lock-parent")
         committed = True
-    except SourceError:
+    except (SourceError, OSError) as error:
         if published_identity is not None:
-            _rollback_publication(parent, path.name, backup, published_identity)
-            backup = None
-        raise
-    except OSError as error:
-        if published_identity is not None:
-            try:
-                _rollback_publication(parent, path.name, backup, published_identity)
+            outcome = _rollback_publication(
+                parent,
+                path.name,
+                backup,
+                existing,
+                published_identity,
+                payload,
+            )
+            if outcome is _PublicOutcome.PRIOR:
                 backup = None
-            except SourceError as rollback_error:
-                raise rollback_error from error
+            elif outcome is _PublicOutcome.CANDIDATE:
+                committed = True
+                return
+            else:
+                raise SourceError("lock-rollback-unsafe") from error
+        if isinstance(error, SourceError):
+            raise
         raise SourceError("lock-publication-failed") from error
     finally:
         if stage is not None:
