@@ -47,6 +47,39 @@ class AuthorityConfig:
     sources: tuple[SourceSpec, ...]
     pool: tuple[PoolSpec, ...]
     targets: tuple[TargetSpec, ...]
+    cache_root: Path | None = None
+
+
+@dataclass(frozen=True)
+class SourceUpdate:
+    """Bounded evidence comparing a mutable source selector to an exact lock."""
+
+    source_id: str
+    source_type: str
+    old_revision: str
+    new_revision: str | None
+    relation: str
+
+
+@dataclass(frozen=True)
+class ArtifactUpdate:
+    """Hash-only review evidence for one authority-relevant artifact."""
+
+    canonical_id: str
+    old_sha256: str | None
+    new_sha256: str | None
+    status: str
+
+
+@dataclass(frozen=True)
+class LockUpdateProposal:
+    """Validated immutable candidate lock and its bounded review evidence."""
+
+    source: SourceUpdate
+    candidate_lock: SkillLock
+    artifacts: tuple[ArtifactUpdate, ...]
+    new_ungranted: tuple[str, ...]
+    removed_ungranted: tuple[str, ...]
 
 
 @dataclass(frozen=True)

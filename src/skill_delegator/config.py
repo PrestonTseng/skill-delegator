@@ -230,4 +230,5 @@ def load_config(config_dir: Path, *, require_lock: bool = True) -> AuthorityConf
         sources=sources,
         pool=tuple(PoolSpec(canonical_id=value) for value in pool_entries),
         targets=targets,
+        cache_root=config_dir.parent / "var" / "cache" / "sources",
     )

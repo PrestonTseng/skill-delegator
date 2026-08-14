@@ -29,6 +29,12 @@ from skill_delegator.receipts import ReceiptError, receipt_document, write_recei
 from skill_delegator.reconciler import ApplyError, apply_plan
 from skill_delegator.resolver import ResolutionError, resolve_desired_state
 from skill_delegator.source_store import resolve_sources
+from skill_delegator.updater import (
+    check_updates,
+    prepare_update,
+    proposal_document,
+    proposal_text,
+)
 from skill_delegator.verifier import bind_verification_evidence, verify_state
 
 
@@ -56,6 +62,12 @@ def build_parser() -> argparse.ArgumentParser:
     status = subparsers.add_parser("status", help="freshly report state without writing a receipt")
     status.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     status.add_argument("--json", action="store_true")
+    update = subparsers.add_parser("update", help="check or propose explicit source updates")
+    update.add_argument("source", nargs="?", metavar="SOURCE")
+    update.add_argument("--all", action="store_true", dest="all_sources")
+    update.add_argument("--check", action="store_true")
+    update.add_argument("--json", action="store_true")
+    update.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     return parser
 
 
@@ -164,6 +176,31 @@ def _verification_exit_code(result) -> int:
     return 1 if result.result == "drift" else 3
 
 
+def _update_check_document(updates) -> dict[str, object]:
+    return {
+        "sources": [
+            {
+                "id": item.source_id,
+                "type": item.source_type,
+                "old_revision": item.old_revision,
+                "new_revision": item.new_revision,
+                "relation": item.relation,
+            }
+            for item in updates
+        ]
+    }
+
+
+def _render_update_checks(updates, *, json_output: bool) -> None:
+    if json_output:
+        print(json.dumps(_update_check_document(updates), sort_keys=True, separators=(",", ":")))
+        return
+    for item in updates:
+        print(f"source {item.source_id}: {item.relation}")
+        print(f"  old: {item.old_revision}")
+        print(f"  new: {item.new_revision or '-'}")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "validate":
@@ -193,6 +230,52 @@ def main(argv: Sequence[str] | None = None) -> int:
         skill_word = "skill" if skill_count == 1 else "skills"
         source_word = "source" if len(lock.sources) == 1 else "sources"
         print(f"Locked {skill_count} {skill_word} from {len(lock.sources)} {source_word}")
+        return 0
+    if args.command == "update":
+        selectors = int(args.source is not None) + int(args.all_sources) + int(args.check)
+        if selectors != 1:
+            print(
+                "Update option conflict: choose exactly one of --check, SOURCE, or --all",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            config_dir = args.config.resolve(strict=False)
+            config = load_config(config_dir)
+            old_lock = _load_validated_lock(config_dir)
+            if args.check:
+                updates = check_updates(config, old_lock)
+                _render_update_checks(updates, json_output=args.json)
+                if any(item.relation == "unavailable" for item in updates):
+                    return 3
+                return 1 if any(item.relation != "no-change" for item in updates) else 0
+
+            source_ids = (
+                tuple(source.id for source in sorted(config.sources, key=lambda item: item.id))
+                if args.all_sources
+                else (args.source,)
+            )
+            candidate = old_lock
+            proposals = []
+            for source_id in source_ids:
+                if source_id is None:
+                    raise SourceError("missing source selector")
+                proposal = prepare_update(source_id, config, candidate)
+                candidate = proposal.candidate_lock
+                proposals.append(proposal)
+            write_lock_atomic(config_dir / "skill-lock.yaml", candidate)
+        except (ConfigError, ResolutionError, SourceError) as error:
+            print(f"Update blocked: {error}", file=sys.stderr)
+            return 3
+        except OSError as error:
+            print(f"Update blocked: lock publication failed: {str(error)[:500]}", file=sys.stderr)
+            return 3
+        if args.json:
+            document = {"proposals": [proposal_document(item) for item in proposals]}
+            print(json.dumps(document, sort_keys=True, separators=(",", ":")))
+        else:
+            for proposal in proposals:
+                sys.stdout.write(proposal_text(proposal))
         return 0
     if args.command == "resolve":
         try:
