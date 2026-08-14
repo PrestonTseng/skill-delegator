@@ -73,3 +73,28 @@ def test_validate_rejects_unhashable_yaml_mapping_key_without_traceback(
     assert "authority.yaml" in result.stderr
     assert "unhashable mapping key" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_validate_rejects_nul_target_for_non_fixture_authority_without_traceback(
+    tmp_path: Path,
+) -> None:
+    config_dir = tmp_path / "config"
+    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+
+    authority_path = config_dir / "authority.yaml"
+    authority = yaml.safe_load(authority_path.read_text(encoding="utf-8"))
+    authority["authority"].update({"id": "non-fixture", "fixture_policy": "none"})
+    authority_path.write_text(yaml.safe_dump(authority, sort_keys=False), encoding="utf-8")
+
+    delegations_path = config_dir / "delegations.yaml"
+    delegations = yaml.safe_load(delegations_path.read_text(encoding="utf-8"))
+    delegations["targets"][0]["root"] = "before\0after"
+    delegations_path.write_text(yaml.safe_dump(delegations, sort_keys=False), encoding="utf-8")
+
+    result = run_cli(config_dir)
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "delegations.yaml at targets.0.root:" in result.stderr
+    assert "NUL" in result.stderr
+    assert "Traceback" not in result.stderr

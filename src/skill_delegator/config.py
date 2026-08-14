@@ -105,6 +105,11 @@ def _ensure_unique_ids(items: list[dict[str, Any]], kind: str) -> None:
         seen.add(identifier)
 
 
+def _validate_path_string(value: str, filename: str, field: str) -> None:
+    if "\0" in value:
+        raise ConfigError(f"{filename} at {field}: path must not contain NUL")
+
+
 def _resolve(config_dir: Path, value: str) -> Path:
     path = Path(value)
     if not path.is_absolute():
@@ -155,6 +160,12 @@ def load_config(config_dir: Path) -> AuthorityConfig:
     source_entries = documents["sources.yaml"]["sources"]
     pool_entries = documents["pool.yaml"]["skills"]
     target_entries = documents["delegations.yaml"]["targets"]
+
+    for index, entry in enumerate(source_entries):
+        for field in ("location", "skill_root"):
+            _validate_path_string(entry[field], "sources.yaml", f"sources.{index}.{field}")
+    for index, entry in enumerate(target_entries):
+        _validate_path_string(entry["root"], "delegations.yaml", f"targets.{index}.root")
 
     _ensure_unique_ids(source_entries, "source")
     _ensure_unique_ids(target_entries, "target")

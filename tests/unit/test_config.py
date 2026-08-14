@@ -19,6 +19,11 @@ CONFIG_FILENAMES = (
     "delegations.yaml",
     "skill-lock.yaml",
 )
+PATH_FIELDS = (
+    ("sources.yaml", "sources", "location"),
+    ("sources.yaml", "sources", "skill_root"),
+    ("delegations.yaml", "targets", "root"),
+)
 
 
 def copy_config(tmp_path: Path) -> Path:
@@ -210,3 +215,37 @@ def test_unhashable_yaml_mapping_key_is_filename_bearing_config_error(tmp_path: 
     message = str(exc_info.value)
     assert message.startswith("authority.yaml: invalid YAML:")
     assert "unhashable mapping key" in message
+
+
+@pytest.mark.parametrize("fixture_policy", ("safe-main-example", "none"))
+@pytest.mark.parametrize(("filename", "collection", "field"), PATH_FIELDS)
+def test_nul_in_path_field_is_filename_and_field_bearing_config_error(
+    tmp_path: Path,
+    fixture_policy: str,
+    filename: str,
+    collection: str,
+    field: str,
+) -> None:
+    config_dir = copy_config(tmp_path)
+    if fixture_policy == "none":
+        rewrite_yaml(
+            config_dir,
+            "authority.yaml",
+            lambda document: document["authority"].update(
+                {"id": "non-fixture", "fixture_policy": "none"}
+            ),
+        )
+
+    def inject_nul(document: dict[str, object]) -> None:
+        entries = document[collection]
+        assert isinstance(entries, list)
+        entries[0][field] = "before\0after"
+
+    rewrite_yaml(config_dir, filename, inject_nul)
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(config_dir)
+
+    message = str(exc_info.value)
+    assert message.startswith(f"{filename} at {collection}.0.{field}:")
+    assert "NUL" in message
