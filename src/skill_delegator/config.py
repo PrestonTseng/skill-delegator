@@ -156,13 +156,14 @@ def _reject_symlink_components(repository_root: Path, target_root: Path) -> None
             raise ConfigError(f"main example target path must not contain symlinks: {current}")
 
 
-def load_config(config_dir: Path) -> AuthorityConfig:
+def load_config(config_dir: Path, *, require_lock: bool = True) -> AuthorityConfig:
     """Load and validate one authority without reading source or target contents."""
 
     config_dir = config_dir.resolve(strict=False)
     documents = {
         filename: _load_document(config_dir, filename, schema)
         for filename, schema in _CONFIG_SCHEMAS.items()
+        if require_lock or filename != "skill-lock.yaml"
     }
     authority = documents["authority.yaml"]["authority"]
     source_entries = documents["sources.yaml"]["sources"]

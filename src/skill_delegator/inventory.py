@@ -79,6 +79,28 @@ def _assert_confined_symlinks(tree_root: Path, source_root: Path) -> None:
                 raise SourceError(f"symlink escape from source root: {path} -> {resolved}")
 
 
+def validate_source_tree(source_root: Path) -> Path:
+    """Validate every symlink in a source tree, excluding ``.git`` only."""
+
+    source = _validated_root(source_root)
+    _assert_confined_symlinks(source, source)
+    return source
+
+
+def validate_snapshot_tree(source_root: Path) -> Path:
+    """Validate links remain confined after a tree is copied to a new root."""
+
+    source = validate_source_tree(source_root)
+    for directory, dirnames, filenames in os.walk(source, followlinks=False):
+        dirnames[:] = sorted(name for name in dirnames if name != ".git")
+        names = [*dirnames, *sorted(name for name in filenames if name != ".git")]
+        for name in names:
+            path = Path(directory) / name
+            if path.is_symlink() and Path(os.readlink(path)).is_absolute():
+                raise SourceError(f"symlink escape from copied snapshot root: {path}")
+    return source
+
+
 def _frontmatter(path: Path) -> tuple[str, str]:
     try:
         text = path.read_text(encoding="utf-8")

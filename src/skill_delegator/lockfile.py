@@ -46,10 +46,11 @@ def build_lock(config: AuthorityConfig, resolved_sources: tuple[ResolvedSource, 
         for skill in sorted(resolved.skills, key=lambda item: item.canonical_id):
             if skill.canonical_id in all_canonical_ids:
                 raise SourceError(f"duplicate canonical artifact id: {skill.canonical_id}")
-            expected_prefix = f"{source_id}/"
-            if not skill.canonical_id.startswith(expected_prefix):
+            expected_canonical_id = f"{source_id}/{skill.relative_path.as_posix()}"
+            if skill.canonical_id != expected_canonical_id:
                 raise SourceError(
-                    f"skill has incorrect canonical source identity: {skill.canonical_id}"
+                    "skill canonical identity does not match its relative path: "
+                    f"expected {expected_canonical_id}, got {skill.canonical_id}"
                 )
             all_canonical_ids.add(skill.canonical_id)
             source_path = PurePosixPath(*spec.skill_root.parts, *skill.relative_path.parts)

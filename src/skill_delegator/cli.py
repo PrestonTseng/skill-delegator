@@ -40,7 +40,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "lock":
         try:
             config_dir = args.config.resolve(strict=False)
-            config = load_config(config_dir)
+            config = load_config(config_dir, require_lock=False)
             cache_root = config_dir.parent / "var" / "cache" / "sources"
             resolved = resolve_sources(config, cache_root)
             lock = build_lock(config, resolved)

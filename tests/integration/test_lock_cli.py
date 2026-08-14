@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import errno
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
+
+from skill_delegator import source_store
+from skill_delegator.cli import main
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 EXAMPLE_CONFIG = REPOSITORY_ROOT / "config"
@@ -14,6 +19,16 @@ EXAMPLE_CONFIG = REPOSITORY_ROOT / "config"
 def run_lock(config_dir: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "skill_delegator.cli", "lock", "--config", str(config_dir)],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def run_validate(config_dir: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-m", "skill_delegator.cli", "validate", "--config", str(config_dir)],
         cwd=REPOSITORY_ROOT,
         check=False,
         capture_output=True,
@@ -49,6 +64,8 @@ def test_lock_cli_is_byte_stable_and_never_touches_target_roots(tmp_path: Path) 
     (config_dir / "delegations.yaml").write_text(
         yaml.safe_dump(targets, sort_keys=False), encoding="utf-8"
     )
+    (config_dir / "skill-lock.yaml").unlink()
+    assert not (config_dir / "skill-lock.yaml").exists()
 
     before_targets = {
         root: tuple(sorted(path.relative_to(root) for path in root.rglob("*")))
@@ -70,3 +87,83 @@ def test_lock_cli_is_byte_stable_and_never_touches_target_roots(tmp_path: Path) 
     assert all(
         (root / "sentinel").read_text(encoding="utf-8") == "untouched" for root in target_roots
     )
+
+
+def test_validate_cli_still_requires_missing_lock_with_precise_exit_2(tmp_path: Path) -> None:
+    config_dir = tmp_path / "config"
+    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    (config_dir / "skill-lock.yaml").unlink()
+
+    result = run_validate(config_dir)
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr.startswith("Configuration error: skill-lock.yaml: cannot read file:")
+    assert "Traceback" not in result.stderr
+
+
+def test_lock_cli_rejects_unrelated_escaping_symlink_without_publishing_cache(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    config_dir = project / "config"
+    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    source = project / "source"
+    skill = source / "hello"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: hello\ndescription: Hello fixture\n---\nbody\n", encoding="utf-8"
+    )
+    outside = project / "outside"
+    outside.write_text("external", encoding="utf-8")
+    (source / "unrelated-link").symlink_to(outside)
+    sources = yaml.safe_load((config_dir / "sources.yaml").read_text(encoding="utf-8"))
+    sources["sources"][0]["location"] = "../source"
+    (config_dir / "sources.yaml").write_text(
+        yaml.safe_dump(sources, sort_keys=False), encoding="utf-8"
+    )
+
+    result = run_lock(config_dir)
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "Lock error: symlink escape from source root:" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not (project / "var" / "cache" / "sources").exists()
+
+
+def test_lock_cli_wraps_posix_competing_directory_race_as_precise_exit_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = tmp_path / "project"
+    config_dir = project / "config"
+    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    source = project / "source"
+    skill = source / "hello"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: hello\ndescription: Hello fixture\n---\nbody\n", encoding="utf-8"
+    )
+    sources = yaml.safe_load((config_dir / "sources.yaml").read_text(encoding="utf-8"))
+    sources["sources"][0]["location"] = "../source"
+    (config_dir / "sources.yaml").write_text(
+        yaml.safe_dump(sources, sort_keys=False), encoding="utf-8"
+    )
+
+    def compete(staging: Path, destination: Path) -> Path:
+        destination.mkdir()
+        (destination / "corrupt").write_text("wrong", encoding="utf-8")
+        raise OSError(errno.ENOTEMPTY, "competing directory")
+
+    monkeypatch.setattr(source_store.Path, "rename", compete)
+
+    result = main(["lock", "--config", str(config_dir)])
+    captured = capsys.readouterr()
+
+    assert result == 2
+    assert captured.out == ""
+    assert captured.err.startswith(
+        "Lock error: content-addressed cache race produced corrupt entry:"
+    )
+    assert "Traceback" not in captured.err
+    assert not tuple((project / "var" / "cache" / "sources" / "example").glob(".snapshot-*"))

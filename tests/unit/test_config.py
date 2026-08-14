@@ -57,6 +57,19 @@ def test_main_example_parses_with_safe_resolved_target_roots() -> None:
         config.authority_id = "changed"  # type: ignore[misc]
 
 
+def test_lock_generation_loader_mode_allows_missing_lock_but_validation_requires_it(
+    tmp_path: Path,
+) -> None:
+    config_dir = copy_config(tmp_path)
+    (config_dir / "skill-lock.yaml").unlink()
+
+    config = load_config(config_dir, require_lock=False)
+
+    assert config.authority_id == "main-example"
+    with pytest.raises(ConfigError, match=r"skill-lock\.yaml: cannot read file"):
+        load_config(config_dir)
+
+
 def test_unknown_yaml_key_fails(tmp_path: Path) -> None:
     config_dir = copy_config(tmp_path)
     rewrite_yaml(
