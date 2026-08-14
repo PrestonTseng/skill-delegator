@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import errno
+import os
 import shutil
 import subprocess
 import sys
@@ -167,3 +168,60 @@ def test_lock_cli_wraps_posix_competing_directory_race_as_precise_exit_2(
     )
     assert "Traceback" not in captured.err
     assert not tuple((project / "var" / "cache" / "sources" / "example").glob(".snapshot-*"))
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX byte-oriented filenames")
+def test_lock_cli_hashes_unrelated_non_utf8_entries_without_traceback(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    config_dir = project / "config"
+    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    source = project / "source"
+    skill = source / "hello"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: hello\ndescription: Hello fixture\n---\nbody\n", encoding="utf-8"
+    )
+    source_bytes = os.fsencode(source)
+    unrelated = os.path.join(source_bytes, b"unrelated-\xff")
+    with open(unrelated, "wb") as stream:
+        stream.write(b"payload")
+    os.symlink(b"unrelated-\xff", os.path.join(source_bytes, b"link-\xfe"))
+    sources = yaml.safe_load((config_dir / "sources.yaml").read_text(encoding="utf-8"))
+    sources["sources"][0]["location"] = "../source"
+    (config_dir / "sources.yaml").write_text(
+        yaml.safe_dump(sources, sort_keys=False), encoding="utf-8"
+    )
+
+    first = run_lock(config_dir)
+    first_bytes = (config_dir / "skill-lock.yaml").read_bytes() if first.returncode == 0 else b""
+    second = run_lock(config_dir)
+
+    assert first.returncode == second.returncode == 0
+    assert first.stderr == second.stderr == ""
+    assert "Traceback" not in first.stderr + second.stderr
+    assert (config_dir / "skill-lock.yaml").read_bytes() == first_bytes
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX byte-oriented filenames")
+def test_lock_cli_rejects_non_utf8_skill_id_with_precise_exit_2(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    config_dir = project / "config"
+    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    source = project / "source"
+    source.mkdir(parents=True)
+    skill = os.path.join(os.fsencode(source), b"skill-\xff")
+    os.mkdir(skill)
+    with open(os.path.join(skill, b"SKILL.md"), "wb") as stream:
+        stream.write(b"---\nname: runtime\ndescription: Test skill\n---\n")
+    sources = yaml.safe_load((config_dir / "sources.yaml").read_text(encoding="utf-8"))
+    sources["sources"][0]["location"] = "../source"
+    (config_dir / "sources.yaml").write_text(
+        yaml.safe_dump(sources, sort_keys=False), encoding="utf-8"
+    )
+
+    result = run_lock(config_dir)
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "Lock error: skill path cannot form a UTF-8 canonical id:" in result.stderr
+    assert "Traceback" not in result.stderr

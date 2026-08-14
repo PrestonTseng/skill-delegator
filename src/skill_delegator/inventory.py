@@ -130,11 +130,20 @@ def _frontmatter(path: Path) -> tuple[str, str]:
     return name, description
 
 
-def _hash_record(digest: Any, kind: bytes, path: PurePosixPath, mode: int, payload: bytes) -> None:
-    encoded_path = path.as_posix().encode("utf-8")
+def _filesystem_bytes(value: str | os.PathLike[str], label: str) -> bytes:
+    try:
+        return os.fsencode(value)
+    except UnicodeEncodeError as error:
+        display = ascii(os.fspath(value))
+        raise SourceError(
+            f"{label} cannot be represented as filesystem bytes: {display}"
+        ) from error
+
+
+def _hash_record(digest: Any, kind: bytes, path: bytes, mode: int, payload: bytes) -> None:
     digest.update(kind)
-    digest.update(len(encoded_path).to_bytes(8, "big"))
-    digest.update(encoded_path)
+    digest.update(len(path).to_bytes(8, "big"))
+    digest.update(path)
     digest.update(mode.to_bytes(4, "big"))
     digest.update(len(payload).to_bytes(8, "big"))
     digest.update(payload)
@@ -149,24 +158,27 @@ def hash_tree(root: Path) -> str:
 
     root = _validated_root(root)
     digest = hashlib.sha256()
-    paths = sorted(
-        (path for path in root.rglob("*") if ".git" not in path.relative_to(root).parts),
-        key=lambda path: path.relative_to(root).as_posix(),
-    )
-    for path in paths:
+    paths: list[tuple[bytes, Path]] = []
+    for path in root.rglob("*"):
+        if ".git" in path.relative_to(root).parts:
+            continue
         relative = PurePosixPath(path.relative_to(root).as_posix())
+        encoded_relative = _filesystem_bytes(relative.as_posix(), "source path")
+        paths.append((encoded_relative, path))
+    for encoded_relative, path in sorted(paths, key=lambda item: item[0]):
         metadata = path.lstat()
         mode = stat.S_IMODE(metadata.st_mode)
         if stat.S_ISLNK(metadata.st_mode):
-            _hash_record(digest, b"L", relative, mode, os.readlink(path).encode("utf-8"))
+            target = _filesystem_bytes(os.readlink(path), "symlink target")
+            _hash_record(digest, b"L", encoded_relative, mode, target)
         elif stat.S_ISDIR(metadata.st_mode):
-            _hash_record(digest, b"D", relative, mode, b"")
+            _hash_record(digest, b"D", encoded_relative, mode, b"")
         elif stat.S_ISREG(metadata.st_mode):
             try:
                 payload = path.read_bytes()
             except OSError as error:
                 raise SourceError(f"cannot hash source file {path}: {error}") from error
-            _hash_record(digest, b"F", relative, mode, payload)
+            _hash_record(digest, b"F", encoded_relative, mode, payload)
         else:
             raise SourceError(f"unsupported special file in source: {path}")
     return digest.hexdigest()
@@ -199,6 +211,12 @@ def discover_skills(source_root: Path, skill_root: PurePosixPath) -> tuple[Skill
             raise SourceError(f"{manifest}: skill must be in a directory below skill_root")
         if relative in seen:
             raise SourceError(f"duplicate artifact path: {relative}")
+        try:
+            relative.as_posix().encode("utf-8")
+        except UnicodeEncodeError as error:
+            raise SourceError(
+                f"skill path cannot form a UTF-8 canonical id: {relative.as_posix()!a}"
+            ) from error
         seen.add(relative)
         name, description = _frontmatter(manifest)
         artifacts.append(

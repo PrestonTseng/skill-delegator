@@ -86,3 +86,52 @@ def test_tree_hash_covers_paths_modes_symlinks_and_bytes_but_excludes_git(tmp_pa
 
     os.chmod(tmp_path / "file", 0o755)
     assert hash_tree(tmp_path) != second
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX byte-oriented filenames")
+def test_tree_hash_preserves_non_utf8_filename_and_symlink_bytes(tmp_path: Path) -> None:
+    root = os.fsencode(tmp_path)
+    filename = os.path.join(root, b"payload-\xff")
+    linkname = os.path.join(root, b"link-\xfe")
+    with open(filename, "wb") as stream:
+        stream.write(b"one")
+    os.symlink(b"payload-\xff", linkname)
+
+    first = hash_tree(tmp_path)
+
+    assert hash_tree(tmp_path) == first
+    with open(filename, "wb") as stream:
+        stream.write(b"two")
+    assert hash_tree(tmp_path) != first
+
+
+def test_discovers_skill_in_normal_unicode_directory(tmp_path: Path) -> None:
+    write_skill(tmp_path, "skills/café")
+
+    artifacts = discover_skills(tmp_path, PurePosixPath("skills"))
+
+    assert artifacts[0].relative_path == PurePosixPath("café")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX byte-oriented filenames")
+def test_rejects_non_utf8_skill_directory_as_unserializable_canonical_id(tmp_path: Path) -> None:
+    skill = os.path.join(os.fsencode(tmp_path), b"skill-\xff")
+    os.mkdir(skill)
+    with open(os.path.join(skill, b"SKILL.md"), "wb") as stream:
+        stream.write(b"---\nname: runtime\ndescription: Test skill\n---\n")
+
+    with pytest.raises(SourceError, match="skill path cannot form a UTF-8 canonical id"):
+        discover_skills(tmp_path, PurePosixPath("."))
+
+
+def test_wraps_genuinely_unencodable_symlink_target_as_source_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "file").write_bytes(b"payload")
+    (tmp_path / "link").symlink_to("file")
+    monkeypatch.setattr(os, "readlink", lambda path: "\ud800")
+
+    with pytest.raises(
+        SourceError, match="symlink target cannot be represented as filesystem bytes"
+    ):
+        hash_tree(tmp_path)
