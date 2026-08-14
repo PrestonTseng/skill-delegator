@@ -120,6 +120,7 @@ class DesiredLink:
     source_path: PurePosixPath
     target_path: Path
     content_sha256: str
+    expected_source_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -136,3 +137,68 @@ class DesiredState:
     """Pure resolved desired state for an authority."""
 
     targets: tuple[DesiredTarget, ...]
+
+
+@dataclass(frozen=True)
+class ManagedEntry:
+    """One manager-owned link validated against its metadata record."""
+
+    artifact_id: str
+    relative_path: PurePosixPath
+    source_path: Path
+    content_sha256: str
+
+
+@dataclass(frozen=True)
+class UnmanagedEntry:
+    """One target entry that the manager must preserve."""
+
+    relative_path: PurePosixPath
+    kind: str
+    link_target: str | None
+
+
+@dataclass(frozen=True)
+class CurrentTargetState:
+    """Read-only, deterministically ordered state of one target."""
+
+    id: str
+    root: Path
+    managed: tuple[ManagedEntry, ...]
+    unmanaged: tuple[UnmanagedEntry, ...]
+    cache_root: Path | None = None
+
+
+@dataclass(frozen=True)
+class CurrentState:
+    """Read-only current state for all desired targets."""
+
+    targets: tuple[CurrentTargetState, ...]
+    expected_cache_root: Path | None = None
+
+
+@dataclass(frozen=True)
+class PlanOperation:
+    """One deterministic reconciliation or preservation decision."""
+
+    action: str
+    target_id: str
+    artifact_id: str | None
+    relative_path: PurePosixPath
+    current_source_path: Path | None = None
+    desired_source_path: Path | None = None
+    entry_kind: str | None = None
+
+
+@dataclass(frozen=True)
+class ReconciliationPlan:
+    """Immutable plan; blockers prohibit every mutating operation."""
+
+    operations: tuple[PlanOperation, ...]
+    blocked: tuple[str, ...]
+
+    @property
+    def has_changes(self) -> bool:
+        return any(
+            operation.action in {"CREATE", "REPLACE", "REMOVE"} for operation in self.operations
+        )

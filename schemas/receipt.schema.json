@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-delegator.local/schemas/receipt.schema.json",
+  "title": "Skill Delegator managed-state receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "manager", "cache_root", "entries"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "manager": {"const": "skill-delegator"},
+    "cache_root": {"type": "string", "minLength": 1},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["artifact_id", "source_path", "content_sha256"],
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "minLength": 3,
+            "pattern": "^[^/\\\\.][^/\\\\]*/[^/\\\\]+(?:/[^/\\\\]+)*$"
+          },
+          "source_path": {"type": "string", "minLength": 1},
+          "content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}

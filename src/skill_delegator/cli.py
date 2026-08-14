@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
 import yaml
@@ -13,7 +14,17 @@ import yaml
 from skill_delegator.config import load_config
 from skill_delegator.errors import ConfigError, SourceError
 from skill_delegator.lockfile import build_lock, write_lock_atomic
-from skill_delegator.models import DesiredState, LockedSkill, LockedSource, SkillLock
+from skill_delegator.managed_state import TargetStateError, scan_target
+from skill_delegator.models import (
+    CurrentState,
+    DesiredState,
+    DesiredTarget,
+    LockedSkill,
+    LockedSource,
+    ReconciliationPlan,
+    SkillLock,
+)
+from skill_delegator.planner import build_plan, plan_json, plan_text
 from skill_delegator.resolver import ResolutionError, resolve_desired_state
 from skill_delegator.source_store import resolve_sources
 
@@ -30,6 +41,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     resolve.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     resolve.add_argument("--json", action="store_true", required=True)
+    plan = subparsers.add_parser("plan", help="scan targets and plan without applying changes")
+    plan.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
+    plan.add_argument("--json", action="store_true")
     return parser
 
 
@@ -81,6 +95,28 @@ def _desired_state_document(state: DesiredState) -> dict[str, object]:
     }
 
 
+def _bind_expected_sources(state: DesiredState, lock: SkillLock, cache_root: Path) -> DesiredState:
+    revisions = {
+        source.source_id: source.resolved_commit or source.tree_hash for source in lock.sources
+    }
+    targets: list[DesiredTarget] = []
+    for target in state.targets:
+        links = []
+        for link in target.links:
+            source_id = link.artifact_id.split("/", 1)[0]
+            revision = revisions[source_id]
+            if revision is None:
+                raise ResolutionError(f"locked source {source_id} has no immutable revision")
+            expected = cache_root / source_id / revision / link.source_path
+            links.append(replace(link, expected_source_path=expected))
+        targets.append(replace(target, links=tuple(links)))
+    return DesiredState(tuple(targets))
+
+
+def _render_plan(plan: ReconciliationPlan, *, json_output: bool) -> None:
+    sys.stdout.write(plan_json(plan) if json_output else plan_text(plan))
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "validate":
@@ -122,6 +158,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
         print(json.dumps(_desired_state_document(state), sort_keys=True, separators=(",", ":")))
         return 0
+    if args.command == "plan":
+        try:
+            config_dir = args.config.resolve(strict=False)
+            config = load_config(config_dir)
+            lock = _load_validated_lock(config_dir)
+            desired = resolve_desired_state(config, lock)
+            cache_root = config_dir.parent / "var" / "cache" / "sources"
+            desired = _bind_expected_sources(desired, lock, cache_root)
+            current = CurrentState(
+                tuple(scan_target(target) for target in config.targets), cache_root
+            )
+            plan = build_plan(desired, current)
+        except TargetStateError as error:
+            plan = ReconciliationPlan((), (str(error),))
+        except (ConfigError, OSError, ResolutionError) as error:
+            print(f"Plan error: {error}", file=sys.stderr)
+            return 3
+        _render_plan(plan, json_output=args.json)
+        if plan.blocked:
+            return 3
+        return 1 if plan.has_changes else 0
     return 2
 
 
