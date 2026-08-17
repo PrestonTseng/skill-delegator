@@ -45,6 +45,22 @@ There is no global authority graph. A Prestonâ†’Niles configuration and a Nilesâ
 
 A typical repository keeps the generic engine and safe example on `main`, while independently reviewed authority configurations may live on separate long-lived branches. Engine updates enter each authority branch only by an explicit human-reviewed Git workflow. The CLI never commits, pushes, merges, opens PRs, or restarts a runtime.
 
+## Test safety for contributors
+
+Generic pytest mutation tests may run only in a tree whose repository-root `config/` is the
+checked-in `main-example` with `fixture_policy: safe-main-example`. The session guard aborts
+pytest before collection/test bodies when root config is unreadable, malformed, authority-owned,
+points outside repository fixture/generated roots, or escapes through an existing symlink
+ancestor. Mutation tests that copy root config must use `tests.fixture_safety`; it rewrites every
+source and target into the current `tmp_path` and rechecks source, cache, target, and receipt roots
+immediately before `lock`, `update`, `apply`, or `verify`.
+
+Never run generic pytest directly on an authority branch. Verify an authority integration by
+exporting the accepted engine to an isolated tree, restoring the accepted safe example config,
+and running generic tests there. Authority config itself is limited to the separately authorized,
+read-only or deployment-specific review workflow; a generic test suite is not an authority
+verification mechanism.
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)

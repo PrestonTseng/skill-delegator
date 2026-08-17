@@ -3,15 +3,17 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from tests.fixture_safety import assert_before_mutation, copy_mutation_fixture
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 
 
 def _run(project: Path, *arguments: str, expected: int = 0) -> subprocess.CompletedProcess[str]:
+    assert_before_mutation(project, project.parent, arguments[0])
     result = subprocess.run(
         [sys.executable, "-m", "skill_delegator.cli", *arguments],
         cwd=project,
@@ -49,13 +51,8 @@ def _snapshot(root: Path) -> tuple[tuple[str, str, str], ...]:
 
 
 def _copy_main_example(tmp_path: Path) -> Path:
-    project = tmp_path / "main-example"
-    shutil.copytree(REPOSITORY_ROOT / "config", project / "config")
-    shutil.copytree(
-        REPOSITORY_ROOT / "tests" / "fixtures" / "example-source",
-        project / "tests" / "fixtures" / "example-source",
-    )
-    shutil.copy2(REPOSITORY_ROOT / ".gitignore", project / ".gitignore")
+    project = copy_mutation_fixture(REPOSITORY_ROOT, tmp_path, "main-example")
+    (project / ".gitignore").write_bytes((REPOSITORY_ROOT / ".gitignore").read_bytes())
     _git(project, "init", "-q", "-b", "main")
     _git(project, "config", "user.name", "Skill Delegator Test")
     _git(project, "config", "user.email", "test@example.invalid")

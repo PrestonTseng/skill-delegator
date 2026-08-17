@@ -7,20 +7,17 @@ from pathlib import Path
 
 import pytest
 
+from tests.fixture_safety import assert_before_mutation, copy_mutation_fixture
+
 REPOSITORY_ROOT = Path(__file__).parents[2]
 
 
 def _example(tmp_path: Path) -> Path:
-    project = tmp_path / "project"
-    shutil.copytree(REPOSITORY_ROOT / "config", project / "config")
-    shutil.copytree(
-        REPOSITORY_ROOT / "tests" / "fixtures" / "example-source",
-        project / "tests" / "fixtures" / "example-source",
-    )
-    return project
+    return copy_mutation_fixture(REPOSITORY_ROOT, tmp_path)
 
 
 def _run(project: Path, command: str, expected: int) -> subprocess.CompletedProcess[str]:
+    assert_before_mutation(project, project.parent, command)
     result = subprocess.run(
         [sys.executable, "-m", "skill_delegator.cli", command],
         cwd=project,

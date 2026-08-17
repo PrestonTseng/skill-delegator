@@ -3,27 +3,23 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import yaml
 
+from tests.fixture_safety import assert_before_mutation, copy_mutation_fixture
+
 REPOSITORY_ROOT = Path(__file__).parents[2]
 
 
 def _example(tmp_path: Path) -> Path:
-    project = tmp_path / "project"
-    shutil.copytree(REPOSITORY_ROOT / "config", project / "config")
-    shutil.copytree(
-        REPOSITORY_ROOT / "tests" / "fixtures" / "example-source",
-        project / "tests" / "fixtures" / "example-source",
-    )
-    return project
+    return copy_mutation_fixture(REPOSITORY_ROOT, tmp_path)
 
 
 def _run(project: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    assert_before_mutation(project, project.parent, arguments[0])
     return subprocess.run(
         [sys.executable, "-m", "skill_delegator.cli", *arguments],
         cwd=project,

@@ -196,3 +196,31 @@ The single receipt filename equals SHA-256 of its exact bytes, and the second ro
 - Exhaustive kernel/filesystem race interleavings, hostile same-privilege processes, power-loss durability, unusual/network filesystems, macOS, and Windows are not verified. The release contract is POSIX/Linux; it does not claim Windows support.
 - Offline local-cache installation does not prove public-index publication, external package metadata rendering, or installation from a public service.
 - Gate B authority branches and real-profile targets/apply are intentionally excluded.
+
+## 2026-08-17 generic pytest confinement closure
+
+After a generic mutation test copied authority-root config and retained a real target, the test
+harness was hardened in two independent layers. Repository `conftest.py` now parses root YAML
+directly (without importing production config), accepts only the exact safe `main-example`
+authority/fixture policy, and confines all source, generated cache/receipt, and target expectations
+with lexical and existing-ancestor checks before pytest can execute a test body. Copied mutation
+fixtures now use `tests.fixture_safety` to rewrite every source and target below the active
+`tmp_path` and reassert source/cache/target/receipt confinement immediately before `lock`,
+`update`, `apply`, and `verify`. A deterministic AST audit rejects mutation-capable tests that
+directly copy repository config without that helper.
+
+The subprocess regression creates an isolated authority-style repository copy targeting an
+external sentinel and runs the exact previously leaking lock-tampering case. Pytest exits at the
+session guard; sentinel bytes and metadata remain identical, with no manager namespace, links,
+cache, or receipts. A safe isolated `main-example` copy still starts pytest and runs its test.
+
+Contributor rule: generic mutation tests run only in a generic safe-config tree. Authority
+branches are verified by an isolated accepted-engine export restored with the accepted safe
+example, never by direct pytest against authority config. Incident cleanup remains separately
+authorization-gated and was not performed as part of this closure.
+
+Fresh Python 3.12 closure gates: focused guard/helper regressions `13 passed`; full suite
+`393 passed in 26.78s`; Ruff format/check clean; `compileall` exit 0; generic config validation
+reported 1 authority, 1 source, 1 pool entry, and 2 targets; wheel/sdist build succeeded; packaged
+artifact test passed; and a fresh offline installed-wheel safe example completed
+validate/lock/plan (expected exit 1)/apply/verify/status with 2/2 links converged.

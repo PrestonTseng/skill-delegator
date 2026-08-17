@@ -34,6 +34,11 @@ Review:
 
 Then use your normal human-controlled Git process to commit the lock. The CLI does not commit, stage, push, merge, or open a PR. Independent authority branches review and accept engine/config updates independently.
 
+Generic pytest is not safe authority-config verification and must never be invoked directly in an
+authority branch. For engine acceptance, export the accepted engine commit into an isolated tree,
+restore the checked-in generic `main-example` config and fixture, and run pytest there. The
+repository pytest session guard intentionally rejects authority root config before any test body.
+
 ## 4. Apply the reviewed exact state
 
 ```console

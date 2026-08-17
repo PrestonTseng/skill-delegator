@@ -3,7 +3,6 @@ from __future__ import annotations
 import errno
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -13,12 +12,13 @@ import yaml
 
 from skill_delegator import source_store
 from skill_delegator.cli import main
+from tests.fixture_safety import assert_before_mutation, copy_mutation_config
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
-EXAMPLE_CONFIG = REPOSITORY_ROOT / "config"
 
 
 def run_lock(config_dir: Path) -> subprocess.CompletedProcess[str]:
+    assert_before_mutation(config_dir.parent, config_dir.parent.parent, "lock")
     return subprocess.run(
         [sys.executable, "-m", "skill_delegator.cli", "lock", "--config", str(config_dir)],
         cwd=REPOSITORY_ROOT,
@@ -41,7 +41,7 @@ def run_validate(config_dir: Path) -> subprocess.CompletedProcess[str]:
 def test_lock_cli_is_byte_stable_and_never_touches_target_roots(tmp_path: Path) -> None:
     project = tmp_path / "project"
     config_dir = project / "config"
-    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    copy_mutation_config(REPOSITORY_ROOT, config_dir.parent)
     source = project / "source"
     source.mkdir(parents=True)
     skill = source / "hello"
@@ -94,7 +94,7 @@ def test_lock_cli_is_byte_stable_and_never_touches_target_roots(tmp_path: Path) 
 def test_hidden_configured_skill_root_lock_validates_loads_and_resolves(tmp_path: Path) -> None:
     project = tmp_path / "project"
     config_dir = project / "config"
-    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    copy_mutation_config(REPOSITORY_ROOT, config_dir.parent)
     source = project / "source"
     skill = source / ".claude" / "skills" / "banner-design"
     skill.mkdir(parents=True)
@@ -152,7 +152,7 @@ def test_hidden_configured_skill_root_lock_validates_loads_and_resolves(tmp_path
 
 def test_validate_cli_still_requires_missing_lock_with_precise_exit_2(tmp_path: Path) -> None:
     config_dir = tmp_path / "config"
-    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    copy_mutation_config(REPOSITORY_ROOT, config_dir.parent)
     (config_dir / "skill-lock.yaml").unlink()
 
     result = run_validate(config_dir)
@@ -168,7 +168,7 @@ def test_lock_cli_rejects_unrelated_escaping_symlink_without_publishing_cache(
 ) -> None:
     project = tmp_path / "project"
     config_dir = project / "config"
-    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    copy_mutation_config(REPOSITORY_ROOT, config_dir.parent)
     source = project / "source"
     skill = source / "hello"
     skill.mkdir(parents=True)
@@ -198,7 +198,7 @@ def test_lock_cli_wraps_posix_competing_directory_race_as_precise_exit_2(
 ) -> None:
     project = tmp_path / "project"
     config_dir = project / "config"
-    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    copy_mutation_config(REPOSITORY_ROOT, config_dir.parent)
     source = project / "source"
     skill = source / "hello"
     skill.mkdir(parents=True)
@@ -218,6 +218,7 @@ def test_lock_cli_wraps_posix_competing_directory_race_as_precise_exit_2(
 
     monkeypatch.setattr(source_store.Path, "rename", compete)
 
+    assert_before_mutation(project, tmp_path, "lock")
     result = main(["lock", "--config", str(config_dir)])
     captured = capsys.readouterr()
 
@@ -234,7 +235,7 @@ def test_lock_cli_wraps_posix_competing_directory_race_as_precise_exit_2(
 def test_lock_cli_hashes_unrelated_non_utf8_entries_without_traceback(tmp_path: Path) -> None:
     project = tmp_path / "project"
     config_dir = project / "config"
-    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    copy_mutation_config(REPOSITORY_ROOT, config_dir.parent)
     source = project / "source"
     skill = source / "hello"
     skill.mkdir(parents=True)
@@ -266,7 +267,7 @@ def test_lock_cli_hashes_unrelated_non_utf8_entries_without_traceback(tmp_path: 
 def test_lock_cli_rejects_non_utf8_skill_id_with_precise_exit_2(tmp_path: Path) -> None:
     project = tmp_path / "project"
     config_dir = project / "config"
-    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    copy_mutation_config(REPOSITORY_ROOT, config_dir.parent)
     source = project / "source"
     source.mkdir(parents=True)
     skill = os.path.join(os.fsencode(source), b"skill-\xff")
