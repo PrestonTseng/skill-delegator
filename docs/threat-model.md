@@ -11,8 +11,8 @@ V1 rejects, among other cases:
 - malformed/duplicate-key/unknown-field configuration and manager metadata;
 - source, cache, target, metadata, transaction, and receipt symlink/non-directory escapes at covered boundaries;
 - broken or escaping source links and unsupported source special files;
-- mismatched configured/locked source sets, types, prefixes, paths, Git commits, complete snapshot tree hashes, and skill hashes;
-- hostile canonical or runtime names, duplicate runtime identities, path collisions, and grants outside the pool;
+- mismatched configured/locked source sets, types, canonical prefixes/suffixes, or lock paths (including root-prefix confusion, normalization, traversal, and any remainder unequal to the canonical suffix), plus mismatched Git commits, complete snapshot tree hashes, and skill hashes;
+- hostile canonical or runtime names; hidden configured source-root prefixes are permitted only in separately validated snapshot-relative lock paths and never become canonical identity; duplicate runtime identities, path collisions, and grants outside the pool;
 - broken, missing, wrong-destination, escaping, or ambiguously owned managed links;
 - unmanaged collisions, stale plans, target/namespace identity replacement, and cooperating concurrent mutation applies;
 - receipt overwrite/collision and unsafe lock-publication outcomes.

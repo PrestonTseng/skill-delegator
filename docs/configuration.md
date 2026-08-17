@@ -26,7 +26,7 @@ sources:
     skill_root: skills
 ```
 
-`type` is `git` or `filesystem`. Git requires `track`; filesystem forbids it. `skill_root` is a confined relative POSIX path. Filesystem source paths retain their lexical identity and reject symlinked/non-directory ancestors during lock. Source trees reject broken/escaping links and unsupported special files. Git access is non-interactive and bounded, but source trust remains an operator decision.
+`type` is `git` or `filesystem`. Git requires `track`; filesystem forbids it. `skill_root` is a confined snapshot-relative POSIX path and may contain safe ordinary hidden segments such as `.claude/skills`. Hidden root segments are configuration, not skill identity: discovered canonical suffixes remain relative to `skill_root` and every canonical suffix segment must be non-hidden. Filesystem source paths retain their lexical identity and reject symlinked/non-directory ancestors during lock. Source trees reject broken/escaping links and unsupported special files. Git access is non-interactive and bounded, but source trust remains an operator decision.
 
 ## `pool.yaml`
 
@@ -68,7 +68,7 @@ sources:
     sha256: <64 lowercase hex>
 ```
 
-Git records both `resolved_commit` (40 lowercase hex) and `tree_hash` (the 64-lowercase-hex hash of the complete directly locked snapshot). Filesystem sources use `tree_hash` as both revision and snapshot identity. Configured and locked source sets and types must match exactly. Canonical prefix/suffix, configured skill root, locked path, runtime name, pool, grants, source snapshot hash, and skill content hash are revalidated at consumption boundaries.
+Git records both `resolved_commit` (40 lowercase hex) and `tree_hash` (the 64-lowercase-hex hash of the complete directly locked snapshot). Filesystem sources use `tree_hash` as both revision and snapshot identity. A lock `canonical_id` is `<source-id>/<canonical-suffix-relative-to-skill_root>` and never includes hidden `skill_root` segments. Its `path` is the snapshot-relative source path formed by exact lexical concatenation of the configured `skill_root` and that canonical suffix, so a source rooted at `.claude/skills` locks `source/banner-design` at `.claude/skills/banner-design`. Lock paths reject absolute, empty, non-normalized, traversal, backslash, control, surrogate, and filesystem-unencodable values. Configured and locked source sets and types must match exactly. Canonical prefix/suffix, configured skill root, exact locked-path binding, runtime name, pool, grants, source snapshot hash, and skill content hash are revalidated at consumption boundaries.
 
 ## Generated state
 

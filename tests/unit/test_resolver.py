@@ -48,6 +48,17 @@ def config(
     )
 
 
+def hidden_root_config(tmp_path: Path) -> AuthorityConfig:
+    return AuthorityConfig(
+        "authority",
+        True,
+        "none",
+        (SourceSpec("source", "filesystem", tmp_path / "source", PurePosixPath(".claude/skills")),),
+        (PoolSpec("source/banner-design"),),
+        (),
+    )
+
+
 def test_resolves_valid_subset_with_exact_desired_link_fields(tmp_path: Path) -> None:
     target = TargetSpec("worker", tmp_path / "target", ("alpha/nested/tool",))
     authority = config(
@@ -180,3 +191,26 @@ def test_rejects_artifact_authority_and_path_binding_mismatches(
 
     with pytest.raises(ResolutionError, match=message):
         resolve_desired_state(authority, lock)
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        "banner-design",
+        ".claude/skill/banner-design",
+        ".claude/skills/banner",
+        ".claude/skills/banner-design/.hidden",
+        ".claude/skills-hidden/banner-design",
+        ".claude/skills/../banner-design",
+    ),
+)
+def test_hidden_skill_root_resolver_rejects_every_non_exact_lock_binding(
+    tmp_path: Path, path: str
+) -> None:
+    lock = SkillLock(
+        1,
+        (source("source", skill("source/banner-design", "banner-design", path)),),
+    )
+
+    with pytest.raises(ResolutionError, match="locked path"):
+        resolve_desired_state(hidden_root_config(tmp_path), lock)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import errno
+import json
 import os
 import shutil
 import subprocess
@@ -88,6 +89,65 @@ def test_lock_cli_is_byte_stable_and_never_touches_target_roots(tmp_path: Path) 
     assert all(
         (root / "sentinel").read_text(encoding="utf-8") == "untouched" for root in target_roots
     )
+
+
+def test_hidden_configured_skill_root_lock_validates_loads_and_resolves(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    config_dir = project / "config"
+    shutil.copytree(EXAMPLE_CONFIG, config_dir)
+    source = project / "source"
+    skill = source / ".claude" / "skills" / "banner-design"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: banner-design\ndescription: Banner design fixture\n---\nbody\n",
+        encoding="utf-8",
+    )
+
+    sources = yaml.safe_load((config_dir / "sources.yaml").read_text(encoding="utf-8"))
+    sources["sources"][0].update(
+        {"id": "source", "location": "../source", "skill_root": ".claude/skills"}
+    )
+    (config_dir / "sources.yaml").write_text(
+        yaml.safe_dump(sources, sort_keys=False), encoding="utf-8"
+    )
+    pool = {"schema_version": 1, "skills": ["source/banner-design"]}
+    (config_dir / "pool.yaml").write_text(yaml.safe_dump(pool, sort_keys=False), encoding="utf-8")
+    delegations = yaml.safe_load((config_dir / "delegations.yaml").read_text(encoding="utf-8"))
+    for target in delegations["targets"]:
+        target["grants"] = ["source/banner-design"]
+    (config_dir / "delegations.yaml").write_text(
+        yaml.safe_dump(delegations, sort_keys=False), encoding="utf-8"
+    )
+
+    locked = run_lock(config_dir)
+    document = yaml.safe_load((config_dir / "skill-lock.yaml").read_text(encoding="utf-8"))
+    validated = run_validate(config_dir)
+    resolved = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "skill_delegator.cli",
+            "resolve",
+            "--json",
+            "--config",
+            str(config_dir),
+        ],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert locked.returncode == 0, locked.stderr
+    locked_skill = document["sources"][0]["skills"][0]
+    assert locked_skill["canonical_id"] == "source/banner-design"
+    assert locked_skill["path"] == ".claude/skills/banner-design"
+    assert validated.returncode == 0, validated.stderr
+    assert resolved.returncode == 0, resolved.stderr
+    resolved_document = json.loads(resolved.stdout)
+    links = [link for target in resolved_document["targets"] for link in target["links"]]
+    assert {link["artifact_id"] for link in links} == {"source/banner-design"}
+    assert {link["source_path"] for link in links} == {".claude/skills/banner-design"}
 
 
 def test_validate_cli_still_requires_missing_lock_with_precise_exit_2(tmp_path: Path) -> None:

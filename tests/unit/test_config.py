@@ -10,6 +10,7 @@ import pytest
 import yaml
 from jsonschema import Draft202012Validator
 
+from skill_delegator import config as config_module
 from skill_delegator.config import load_config
 from skill_delegator.errors import ConfigError
 from skill_delegator.schema_validation import schema_text
@@ -28,6 +29,29 @@ PATH_FIELDS = (
     ("sources.yaml", "sources", "skill_root"),
     ("delegations.yaml", "targets", "root"),
 )
+
+
+def lock_document(
+    path: str = "banner-design", canonical_id: str = "source/banner-design"
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "sources": [
+            {
+                "source_id": "source",
+                "type": "filesystem",
+                "tree_hash": "a" * 64,
+                "skills": [
+                    {
+                        "canonical_id": canonical_id,
+                        "runtime_name": "banner-design",
+                        "path": path,
+                        "sha256": "b" * 64,
+                    }
+                ],
+            }
+        ],
+    }
 
 
 def copy_config(tmp_path: Path) -> Path:
@@ -272,6 +296,85 @@ def test_canonical_json_schemas_directly_reject_trailing_ascii_controls(
     errors = list(Draft202012Validator(json.loads(schema_text(schema_name))).iter_errors(candidate))
 
     assert errors
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        ".claude/skills/banner-design",
+        "skills/.internal/banner-design",
+        "skills/banner-design.v1",
+    ),
+)
+def test_lock_schema_accepts_safe_snapshot_relative_paths_with_hidden_segments(path: str) -> None:
+    validator = Draft202012Validator(json.loads(schema_text("lock.schema.json")))
+
+    assert list(validator.iter_errors(lock_document(path))) == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/absolute/banner-design",
+        "",
+        "skills//banner-design",
+        "skills/banner-design/",
+        ".",
+        "..",
+        "skills/./banner-design",
+        "skills/../banner-design",
+        "skills\\banner-design",
+        "skills/banner\x00design",
+        "skills/banner\x1fdesign",
+        "skills/banner\x7fdesign",
+        "skills/banner\ud800design",
+    ),
+)
+def test_lock_schema_rejects_unsafe_snapshot_relative_paths(path: str) -> None:
+    validator = Draft202012Validator(json.loads(schema_text("lock.schema.json")))
+
+    assert list(validator.iter_errors(lock_document(path)))
+
+
+@pytest.mark.parametrize(
+    "canonical_id",
+    (
+        "source/.claude/banner-design",
+        "source/skills/.hidden",
+        "source/banner\x00design",
+        "source/banner\ud800design",
+    ),
+)
+def test_hidden_lock_path_support_does_not_weaken_canonical_id_schema(
+    canonical_id: str,
+) -> None:
+    validator = Draft202012Validator(json.loads(schema_text("lock.schema.json")))
+
+    assert list(validator.iter_errors(lock_document(".claude/skills/banner-design", canonical_id)))
+
+
+def test_loaded_lock_path_must_be_representable_in_filesystem_encoding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_dir = copy_config(tmp_path)
+    rewrite_yaml(
+        config_dir,
+        "skill-lock.yaml",
+        lambda document: document["sources"][0]["skills"][0].update(
+            {"path": ".claude/skills/banner-design"}
+        ),
+    )
+    real_fsencode = config_module.os.fsencode
+
+    def reject_lock_path(value: str) -> bytes:
+        if value == ".claude/skills/banner-design":
+            raise UnicodeEncodeError("ascii", value, 0, 1, "injected")
+        return real_fsencode(value)
+
+    monkeypatch.setattr(config_module.os, "fsencode", reject_lock_path)
+
+    with pytest.raises(ConfigError, match="skill-lock.*path.*filesystem encoding"):
+        load_config(config_dir)
 
 
 @pytest.mark.parametrize("symlink_component", ("example-targets", "worker"))

@@ -20,7 +20,7 @@ fresh desired/source/target evidence ──verify──> content-addressed recei
 
 ## Identity and placement
 
-Artifact identity is `<source-id>/<relative-path-from-skill-root>`. Runtime identity is a safe bounded `SKILL.md` frontmatter `name`; duplicate runtime identities per target fail. Artifact paths—not runtime names—determine symlink placement: `<target-root>/<artifact-id>`.
+Artifact identity is `<source-id>/<relative-path-from-skill-root>`. The canonical suffix uses strict non-hidden segments even when the configured `skill_root` itself contains safe hidden segments. The lock separately records the full snapshot-relative source path as exact `skill_root + canonical suffix`; resolution requires that lexical equality rather than prefix-only containment. Runtime identity is a safe bounded `SKILL.md` frontmatter `name`; duplicate runtime identities per target fail. Artifact paths—not runtime names or configured source-root prefixes—determine symlink placement: `<target-root>/<artifact-id>`.
 
 Apply consumes only exact lock identities and exact skill hashes. A Git lock binds both the resolved commit and a SHA-256 tree hash computed directly over the complete locked snapshot; a filesystem lock uses that complete tree hash as its revision. Mutable Git `track` values are update inputs, never apply inputs. Filesystem snapshots are cached at `var/cache/sources/<source-id>/<snapshot-tree-hash>/`; Git snapshots are cached at `var/cache/sources/<source-id>/<resolved-commit>/`. Both lock forms carry the complete snapshot tree hash.
 

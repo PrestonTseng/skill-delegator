@@ -153,6 +153,14 @@ def load_config(config_dir: Path, *, require_lock: bool = True) -> AuthorityConf
             _validate_path_string(entry[field], "sources.yaml", f"sources.{index}.{field}")
     for index, entry in enumerate(target_entries):
         _validate_path_string(entry["root"], "delegations.yaml", f"targets.{index}.root")
+    if "skill-lock.yaml" in documents:
+        for source_index, locked_source in enumerate(documents["skill-lock.yaml"]["sources"]):
+            for skill_index, locked_skill in enumerate(locked_source["skills"]):
+                _validate_path_string(
+                    locked_skill["path"],
+                    "skill-lock.yaml",
+                    f"sources.{source_index}.skills.{skill_index}.path",
+                )
 
     _ensure_unique_ids(source_entries, "source")
     _ensure_unique_ids(target_entries, "target")

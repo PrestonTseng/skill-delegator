@@ -25,6 +25,7 @@
               "required": ["canonical_id", "runtime_name", "path", "sha256"],
               "properties": {
                 "canonical_id": {
+                  "description": "Canonical source-qualified skill ID; its suffix is relative to the configured skill_root and every suffix segment is non-hidden.",
                   "type": "string",
                   "pattern": "^[a-z][a-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$",
                   "not": {"pattern": "[\u0000-\u001F\u007F]"}
@@ -34,9 +35,10 @@
                   "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
                 },
                 "path": {
+                  "description": "Snapshot-relative source path equal to configured skill_root plus the canonical suffix; ordinary prefix segments may be hidden, but the path is lexical, relative, normalized, and traversal-free.",
                   "type": "string",
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$",
-                  "not": {"pattern": "[\u0000-\u001F\u007F]"}
+                  "pattern": "^(?!/)(?!(?:.*?/)?\\.{1,2}(?:/|$))[^/\\\\]+(?:/[^/\\\\]+)*$",
+                  "not": {"pattern": "[\u0000-\u001F\u007F\uD800-\uDFFF]"}
                 },
                 "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
               }
