@@ -346,24 +346,34 @@ def test_rollback_preserves_same_raw_target_symlink_with_new_inode(
     root.mkdir()
     root, plan = _plan(tmp_path, count=1)
     final = root / "src" / "skill-0"
-    replacement_inode: int | None = None
+    replacement = final.with_name(f".{final.name}.replacement")
+    replacement_identity: tuple[int, int] | None = None
 
     def replace_promoted_link(name: str) -> None:
-        nonlocal replacement_inode
+        nonlocal replacement_identity
         if name == "after-promote-1":
             raw = os.readlink(final)
-            final.unlink()
-            final.symlink_to(raw)
-            replacement_inode = final.lstat().st_ino
+            original_stat = final.lstat()
+            original_identity = (original_stat.st_dev, original_stat.st_ino)
+            try:
+                replacement.symlink_to(raw)
+                replacement_stat = replacement.lstat()
+                replacement_identity = (replacement_stat.st_dev, replacement_stat.st_ino)
+                assert replacement_identity != original_identity
+                os.replace(replacement, final)
+            finally:
+                replacement.unlink(missing_ok=True)
             raise OSError("same-target replacement")
 
     monkeypatch.setattr(reconciler, "_checkpoint", replace_promoted_link)
     with pytest.raises(ApplyError, match="rollback failed"):
         apply_plan(plan, lock_timeout=0.2)
 
+    final_stat = final.lstat()
     assert final.is_symlink()
-    assert final.lstat().st_ino == replacement_inode
+    assert (final_stat.st_dev, final_stat.st_ino) == replacement_identity
     assert os.readlink(final) == str(plan.targets[0].desired_entries[0].source_path)
+    assert not replacement.exists()
 
 
 def test_post_commit_cleanup_failure_keeps_committed_link_and_metadata(
