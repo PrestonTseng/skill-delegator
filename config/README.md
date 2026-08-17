@@ -15,3 +15,13 @@ Canonical IDs are `<source-id>/<path-relative-to-skill-root>`. Runtime names com
 `main-example` uses `fixture_policy: safe-main-example`. Its filesystem source is `../tests/fixtures/example-source`; its relative target roots normalize below ignored `../var/example-targets/`. Existing symlinked or non-directory target components are rejected. `validate` reads configuration only. `lock` may create ignored `var/cache`; `apply` creates only configured example targets and manager metadata; `verify` may create ignored `var/receipts`.
 
 Do not replace this policy with real authority paths on generic `main`. Copy and review configuration in an independent authority domain instead. The complete contract is at `docs/configuration.md` in a source checkout and `skill_delegator/docs/configuration.md` in an installed wheel.
+
+### Updating the accepted safe example
+
+When an intentional review changes any accepted file, update the pytest guard in the same commit:
+
+1. Finish the reviewed edits to exactly `config/README.md` and the five YAML files.
+2. Run `sha256sum config/README.md config/authority.yaml config/delegations.yaml config/pool.yaml config/skill-lock.yaml config/sources.yaml`.
+3. Replace the matching values in `SAFE_CONFIG_SHA256` in the repository `conftest.py` and run `pytest -q tests/integration/test_pytest_safety_guard.py`.
+
+The manifest entry set and hashes are one reviewable contract; never add authority-specific paths to it.

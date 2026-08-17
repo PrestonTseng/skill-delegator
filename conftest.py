@@ -6,7 +6,9 @@ couple test startup to cache-affecting behavior and weaken the pre-test safety b
 
 from __future__ import annotations
 
+import hashlib
 import os
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -23,20 +25,70 @@ EXPECTED_AUTHORITY = {
         "fixture_policy": "safe-main-example",
     },
 }
+SAFE_CONFIG_SHA256 = {
+    "README.md": "995c9f5e8b775c5fcbb22b6e161123b5f1d1ff0a92c82de3d9eb96a898aa1674",
+    "authority.yaml": "f3ac0bd41f8aaeb7af4e0d84231e03fd700273a2ad02877183d7e8ce615236b9",
+    "delegations.yaml": "6754b8bdb54359aa44a1957065366f08fd607481040871bf4d428258e13717af",
+    "pool.yaml": "e88cb540b9e6cc3e58f0f4198a6dcfcaaada225f57d49838741173ca9d30a76b",
+    "skill-lock.yaml": "69ae60e70fb90304104e3570d113fd48a37462f326400611f6ffe3896d3fb8cf",
+    "sources.yaml": "7e7b34ae4d0b5871fbe4fcfb172e493ad05a208654b1be9cdee2eaa80d3b0000",
+}
 
 
 class UnsafeGenericConfig(ValueError):
     pass
 
 
-def _read_mapping(path: Path) -> dict[str, Any]:
+def _read_mapping(name: str, content: bytes) -> dict[str, Any]:
     try:
-        document = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, yaml.YAMLError) as exc:
-        raise UnsafeGenericConfig(f"cannot safely read {path.name}: {exc}") from exc
+        document = yaml.safe_load(content.decode("utf-8"))
+    except (UnicodeError, yaml.YAMLError) as exc:
+        raise UnsafeGenericConfig(f"cannot safely read {name}: {exc}") from exc
     if not isinstance(document, dict):
-        raise UnsafeGenericConfig(f"{path.name} must contain a mapping")
+        raise UnsafeGenericConfig(f"{name} must contain a mapping")
     return document
+
+
+def _read_descriptor(descriptor: int) -> bytes:
+    chunks: list[bytes] = []
+    while chunk := os.read(descriptor, 128 * 1024):
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _exact_safe_config(config: Path) -> dict[str, bytes]:
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+    config_descriptor = os.open(config, directory_flags)
+    try:
+        actual_entries = set(os.listdir(config_descriptor))
+        expected_entries = set(SAFE_CONFIG_SHA256)
+        if actual_entries != expected_entries:
+            missing = sorted(expected_entries - actual_entries)
+            extra = sorted(actual_entries - expected_entries)
+            raise UnsafeGenericConfig(
+                f"config entry set is not exact (missing={missing}, extra={extra})"
+            )
+
+        documents: dict[str, bytes] = {}
+        file_flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
+        for name, expected_hash in SAFE_CONFIG_SHA256.items():
+            descriptor = os.open(name, file_flags, dir_fd=config_descriptor)
+            try:
+                metadata = os.fstat(descriptor)
+                if not stat.S_ISREG(metadata.st_mode):
+                    raise UnsafeGenericConfig(f"config/{name} must be a non-symlink regular file")
+                content = _read_descriptor(descriptor)
+            finally:
+                os.close(descriptor)
+            if hashlib.sha256(content).hexdigest() != expected_hash:
+                raise UnsafeGenericConfig(f"config/{name} does not match the accepted safe example")
+            documents[name] = content
+
+        if set(os.listdir(config_descriptor)) != expected_entries:
+            raise UnsafeGenericConfig("config entry set changed during safety validation")
+        return documents
+    finally:
+        os.close(config_descriptor)
 
 
 def _lexical(path: Path) -> Path:
@@ -74,7 +126,8 @@ def _configured_path(config: Path, raw: object, label: str) -> Path:
 
 def validate_repository_config() -> None:
     config = REPOSITORY_ROOT / "config"
-    authority = _read_mapping(config / "authority.yaml")
+    exact_config = _exact_safe_config(config)
+    authority = _read_mapping("authority.yaml", exact_config["authority.yaml"])
     if authority != EXPECTED_AUTHORITY:
         raise UnsafeGenericConfig("authority.yaml is not the exact safe main-example contract")
 
@@ -87,12 +140,15 @@ def validate_repository_config() -> None:
     ):
         _confined(path, REPOSITORY_ROOT, label)
 
-    sources = _read_mapping(config / "sources.yaml").get("sources")
+    sources = _read_mapping("sources.yaml", exact_config["sources.yaml"]).get("sources")
     if not isinstance(sources, list) or not sources:
         raise UnsafeGenericConfig("sources.yaml must contain a non-empty sources list")
     for index, source in enumerate(sources):
         if not isinstance(source, dict):
             raise UnsafeGenericConfig(f"source {index} must be a mapping")
+        source_id = source.get("id")
+        if not isinstance(source_id, str) or not source_id:
+            raise UnsafeGenericConfig(f"source {index} id must be a non-empty string")
         location = _configured_path(config, source.get("location"), f"source {index}")
         lexical_location = _lexical(location)
         if not any(
@@ -112,15 +168,18 @@ def validate_repository_config() -> None:
             raise UnsafeGenericConfig(f"source {index} skill_root is outside example roots")
         _confined(skill_path, REPOSITORY_ROOT, f"source {index} skill_root")
 
-    configured_ids = {source.get("id") for source in sources}
-    pool = _read_mapping(config / "pool.yaml").get("skills")
+    configured_id_values = [source["id"] for source in sources]
+    if len(configured_id_values) != len(set(configured_id_values)):
+        raise UnsafeGenericConfig("sources.yaml source ids must be unique")
+    configured_ids = set(configured_id_values)
+    pool = _read_mapping("pool.yaml", exact_config["pool.yaml"]).get("skills")
     if not isinstance(pool, list) or not pool or not all(isinstance(item, str) for item in pool):
         raise UnsafeGenericConfig("pool.yaml must contain a non-empty string skills list")
     if any(item.split("/", 1)[0] not in configured_ids for item in pool):
         raise UnsafeGenericConfig("pool.yaml references a source outside safe sources")
     pool_ids = set(pool)
 
-    targets = _read_mapping(config / "delegations.yaml").get("targets")
+    targets = _read_mapping("delegations.yaml", exact_config["delegations.yaml"]).get("targets")
     if not isinstance(targets, list) or not targets:
         raise UnsafeGenericConfig("delegations.yaml must contain a non-empty targets list")
     allowed_targets = _lexical(REPOSITORY_ROOT / "var" / "example-targets")
@@ -137,12 +196,15 @@ def validate_repository_config() -> None:
         if not set(grants).issubset(pool_ids):
             raise UnsafeGenericConfig(f"target {index} grants are outside the safe pool")
 
-    lock_sources = _read_mapping(config / "skill-lock.yaml").get("sources")
+    lock_sources = _read_mapping("skill-lock.yaml", exact_config["skill-lock.yaml"]).get("sources")
     if not isinstance(lock_sources, list):
         raise UnsafeGenericConfig("skill-lock.yaml sources must be a list")
-    if {
-        source.get("source_id") for source in lock_sources if isinstance(source, dict)
-    } != configured_ids:
+    lock_source_ids: list[str] = []
+    for source in lock_sources:
+        if not isinstance(source, dict) or not isinstance(source.get("source_id"), str):
+            raise UnsafeGenericConfig("skill-lock.yaml source entries are malformed")
+        lock_source_ids.append(source["source_id"])
+    if len(lock_source_ids) != len(set(lock_source_ids)) or set(lock_source_ids) != configured_ids:
         raise UnsafeGenericConfig("skill-lock.yaml source identities do not match safe sources")
     locked_ids: set[str] = set()
     for source in lock_sources:
