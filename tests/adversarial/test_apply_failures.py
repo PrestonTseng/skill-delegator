@@ -373,7 +373,7 @@ def test_rollback_preserves_same_raw_target_symlink_with_new_inode(
     assert final.is_symlink()
     assert (final_stat.st_dev, final_stat.st_ino) == replacement_identity
     assert os.readlink(final) == str(plan.targets[0].desired_entries[0].source_path)
-    assert not replacement.exists()
+    assert not os.path.lexists(replacement)
 
 
 def test_post_commit_cleanup_failure_keeps_committed_link_and_metadata(
