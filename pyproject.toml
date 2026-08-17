@@ -7,10 +7,12 @@ name = "skill-delegator"
 version = "0.1.0"
 description = "Declarative, fail-closed skill delegation CLI"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",

@@ -332,6 +332,9 @@ Remove residual manager transaction directories only after deliberate review.
 
 ## Documentation
 
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [MIT license](LICENSE)
 - [Architecture and authority scope](docs/architecture.md)
 - [Configuration reference](docs/configuration.md)
 - [Source update and apply workflow](docs/update-workflow.md)
