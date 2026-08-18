@@ -73,7 +73,7 @@ This tool is not any of these systems:
 - a runtime supervisor
 - an automatic Git service
 
-The tool does not authenticate a remote Git server. It records the exact identity that Git returns.
+`skill-delegator` relies on Git for transport authentication. It does not verify commit signatures or provide a transparency log.
 
 Unmanaged preservation means that the reconciler does not intentionally erase entries without valid manager ownership.
 

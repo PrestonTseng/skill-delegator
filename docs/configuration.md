@@ -82,7 +82,7 @@ The pool is the maximum set that this authority can grant. Locking a source does
 schema_version: 1
 targets:
   - id: worker
-    root: /srv/agents/worker/skills
+    root: ../var/worker-skills
     grants:
       - shared/code-review
 ```
@@ -93,12 +93,16 @@ Every grant must exist in the pool and in `skill-lock.yaml`.
 
 Two target entries cannot use the same normalized artifact path. Duplicate runtime names in one target also fail closed.
 
+The current user needs write access to the target and each missing parent directory.
+
+For production, use a dedicated target root and the least required privilege.
+
 ## `skill-lock.yaml`
 
 Run this command to generate the file:
 
 ```console
-skillctl lock --config my-config
+uv run --frozen --python 3.12 skillctl lock --config my-config
 ```
 
 A filesystem lock has this shape:
@@ -153,10 +157,10 @@ Do not commit generated caches, example targets, transaction data, or receipts a
 After you edit the four owner-maintained files, generate the exact lock:
 
 ```console
-skillctl lock --config my-config
-skillctl validate --config my-config
-skillctl resolve --json --config my-config
-skillctl plan --json --config my-config
+uv run --frozen --python 3.12 skillctl lock --config my-config
+uv run --frozen --python 3.12 skillctl validate --config my-config
+uv run --frozen --python 3.12 skillctl resolve --json --config my-config
+uv run --frozen --python 3.12 skillctl plan --json --config my-config
 ```
 
 Review all five files and the complete plan. Commit the accepted configuration before you apply it.
@@ -164,9 +168,11 @@ Review all five files and the complete plan. Commit the accepted configuration b
 Then run:
 
 ```console
-skillctl apply --config my-config
-skillctl verify --config my-config
-skillctl status --json --config my-config
+uv run --frozen --python 3.12 skillctl apply --config my-config
+uv run --frozen --python 3.12 skillctl verify --config my-config
+uv run --frozen --python 3.12 skillctl status --json --config my-config
 ```
 
-If the plan contains a reviewed REMOVE operation, add `--yes` to `apply`.
+`apply` recomputes and immediately executes a new plan. It does not consume the displayed `plan` output.
+
+CAUTION: `--yes` authorizes each REMOVE in this new plan. Use it only when you accept this V1 limit.

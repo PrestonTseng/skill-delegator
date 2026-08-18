@@ -14,7 +14,7 @@ Independent authorities can use the same code and keep separate configuration hi
 sources.yaml ──lock──> immutable cache + skill-lock.yaml
 five configuration files ──resolve──> desired state
 desired state + target scan ──plan──> reconciliation plan
-reviewed current plan ──apply──> managed symlinks + managed.json
+current configuration + fresh target scan ──apply──> new plan + managed state
 fresh source and target evidence ──verify──> verification receipt
 ```
 
@@ -23,6 +23,8 @@ fresh source and target evidence ──verify──> verification receipt
 `lock` changes only the exact lock and ignored source cache. `update` changes only source observations or the candidate lock.
 
 `apply` is the only command that changes targets. `verify` can write a receipt but does not change sources or targets.
+
+`apply` recomputes and immediately executes a new plan. It does not consume or bind to displayed `plan` output.
 
 ## Skill Identity
 
@@ -58,7 +60,9 @@ Source snapshots use content-addressed cache paths below `var/cache/sources/`.
 
 ## Target Model
 
-V1 creates symlinks only. It records its entries in `<target>/.skill-delegator/managed.json`.
+V1 publishes each delegated skill as a symlink. It also writes manager records, transaction data, cache snapshots, and receipts.
+
+It records managed links in `<target>/.skill-delegator/managed.json`.
 
 Other files, directories, and links are unmanaged. The tool preserves them.
 

@@ -4,7 +4,7 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-`skill-delegator` publishes reviewed skills to local target directories as deterministic symlinks.
+`skill-delegator` publishes selected skills to local target directories as deterministic symlinks.
 
 It gives one authority a controlled skill pool. That authority can grant selected skills to one or more targets.
 
@@ -14,7 +14,7 @@ Use `skill-delegator` when you need these controls:
 
 - Keep skill sources and target grants in versioned YAML files.
 - Lock mutable sources to exact Git commits and content hashes.
-- Review every target change before it occurs.
+- Inspect proposed target changes before `apply` recomputes and executes its plan.
 - Preserve files and links that the tool does not manage.
 - Detect drift and create content-addressed verification receipts.
 - Keep each authority configuration independent.
@@ -22,11 +22,11 @@ Use `skill-delegator` when you need these controls:
 ## Requirements
 
 - Python 3.12 or later
-- A POSIX operating system
+- Linux
 - Git
 - [uv](https://docs.astral.sh/uv/)
 
-The verified release environment is Linux. V1 uses `fcntl`, descriptor-relative file operations, and `/proc` descriptor paths.
+V1 requires Linux. It uses `fcntl`, descriptor-relative file operations, and `/proc` descriptor paths.
 
 ## Quick Start
 
@@ -60,6 +60,8 @@ The first `plan` exits with status 1. This status means that the plan contains c
 
 Review every `CREATE`, `REPLACE`, `REMOVE`, and `KEEP` operation before you continue.
 
+CAUTION: `apply` does not consume this displayed plan. It computes and immediately executes a new plan from the current state.
+
 ### 4. Apply and verify the plan
 
 ```console
@@ -89,7 +91,7 @@ All files use `schema_version: 1`. The schemas reject duplicate YAML keys and un
 
 ### 1. Copy the safe example
 
-Keep real paths out of the generic `config/` directory.
+Keep real paths out of the checked-in `config/` directory.
 
 ```console
 cp -R config my-config
@@ -143,12 +145,16 @@ Edit `my-config/delegations.yaml`:
 schema_version: 1
 targets:
   - id: worker
-    root: /srv/agents/worker/skills
+    root: ../var/worker-skills
     grants:
       - shared/code-review
 ```
 
 Each grant must exist in both the pool and the exact lock.
+
+Use a target path that the current user can write. The user also needs access to each missing parent directory.
+
+For production, use a dedicated target root and the least required privilege.
 
 ### 6. Generate and review the exact lock
 
@@ -161,6 +167,16 @@ uv run --frozen --python 3.12 skillctl plan --json --config my-config
 
 Review all five files. Then commit the accepted configuration with your normal Git process.
 
+### 7. Apply and verify the current state
+
+If you accept this V1 limit, run these commands:
+
+```console
+uv run --frozen --python 3.12 skillctl apply --config my-config
+uv run --frozen --python 3.12 skillctl verify --config my-config
+uv run --frozen --python 3.12 skillctl status --json --config my-config
+```
+
 Read the [configuration reference](docs/configuration.md) before you use advanced paths or multiple sources.
 
 ## Safe Operation Workflow
@@ -168,7 +184,7 @@ Read the [configuration reference](docs/configuration.md) before you use advance
 Use this workflow for each new or changed configuration:
 
 ```text
-lock → validate → resolve → plan → human review and commit → apply → verify → status
+lock → validate → resolve → plan → review and commit → apply (new plan) → verify → status
 ```
 
 `lock` changes only `skill-lock.yaml` and the ignored source cache. It does not change a target.
@@ -177,18 +193,22 @@ lock → validate → resolve → plan → human review and commit → apply →
 
 `apply` is the only command that changes targets.
 
+`apply` recomputes its plan from the current configuration and target state. It does not bind to the displayed `plan` output.
+
+If exact plan approval is mandatory, do not use V1 `apply`. V1 has no plan digest or approved plan-file input.
+
 `verify` reads fresh source and target evidence. It can write a content-addressed receipt.
 
 `status` reads fresh evidence without writing a receipt.
 
 ### REMOVE operations
 
-CAUTION: Do not add `--yes` until a human reviews every REMOVE operation. A REMOVE can erase a manager-owned link.
+CAUTION: `--yes` authorizes each REMOVE in the new plan that `apply` computes. A REMOVE can erase a manager-owned link.
 
-If the reviewed plan contains a REMOVE, use this command:
+Run `plan` immediately before `apply`. If you accept that limit and expect a REMOVE, use this command:
 
 ```console
-skillctl apply --yes --config my-config
+uv run --frozen --python 3.12 skillctl apply --yes --config my-config
 ```
 
 The tool preserves unmanaged target content. A REMOVE also requires a valid manager record.
@@ -201,17 +221,19 @@ The tool preserves unmanaged target content. A REMOVE also requires a valid mana
 | `lock` | Resolve sources and write the exact lock. | No |
 | `resolve --json` | Show the desired target state. | No |
 | `plan [--json]` | Compare the desired and current states. | No |
-| `apply [--yes]` | Apply the current validated plan. | Yes |
+| `apply [--yes]` | Recompute and immediately apply a new plan. | Yes |
 | `verify` | Verify fresh evidence and write a receipt. | No |
 | `status [--json]` | Report fresh state without a receipt. | No |
 | `update --check` | Observe source changes. | No |
 | `update SOURCE|--all` | Write a candidate exact lock. | No |
 
-Run `skillctl COMMAND --help` for command options.
+Run `uv run --frozen --python 3.12 skillctl COMMAND --help` for command options.
 
 ## Safety Model
 
-V1 creates symlinks only. It is not a filesystem sandbox or a malware scanner.
+V1 publishes each delegated skill as a symlink. It also writes the generated state that this README lists.
+
+It is not a filesystem sandbox or a malware scanner.
 
 One invocation reads one authority configuration. The engine has no global authority hierarchy.
 

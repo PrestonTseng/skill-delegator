@@ -2,15 +2,17 @@
 
 Source updates and target changes are separate operations.
 
+The commands below use a source checkout that was installed with `uv sync`.
+
 ## 1. Observe Source Changes
 
 ```console
-skillctl update --check --config my-config
+uv run --frozen --python 3.12 skillctl update --check --config my-config
 ```
 
 For a Git source, this command compares the tracked reference. For a filesystem source, it compares the complete tree identity.
 
-The command can update ignored cache observations. It does not write the lock or change a target.
+The command can write immutable cache snapshots. It does not write the lock or change a target.
 
 Exit status 0 means no change. Status 1 means that a change exists. Status 3 means that the operation is unavailable or blocked.
 
@@ -19,22 +21,24 @@ Exit status 0 means no change. Status 1 means that a change exists. Status 3 mea
 Propose an update for one source:
 
 ```console
-skillctl update shared --json --config my-config
+uv run --frozen --python 3.12 skillctl update shared --json --config my-config
 ```
 
 Propose updates for all sources:
 
 ```console
-skillctl update --all --json --config my-config
+uv run --frozen --python 3.12 skillctl update --all --json --config my-config
 ```
 
 The command resolves exact revisions and builds a complete candidate lock.
 
-It reports changed hashes, removed skills, renamed skills, and new ungranted skills. Missing pool or grant entries block publication.
+It can write immutable cache snapshots and `skill-lock.yaml`. It does not change targets.
 
-The command writes only `skill-lock.yaml`. It does not change targets.
+The output reports valid authority-relevant hash changes and new ungranted skills.
 
-Use `skillctl lock` for an initial lock or an intentional full relock.
+A missing pooled or granted skill blocks the proposal before detailed output. The command reports a bounded `candidate-invalid` error.
+
+Use `uv run --frozen --python 3.12 skillctl lock --config my-config` for an initial lock or an intentional full relock.
 
 ## 3. Review and Commit
 
@@ -42,28 +46,31 @@ Review these items:
 
 1. Review each old and new exact source identity.
 2. Review each changed skill hash in the pool and grants.
-3. Review removed, renamed, new, and ungranted skills.
-4. Review `git diff -- my-config/skill-lock.yaml`.
-5. Run `skillctl resolve --json --config my-config`.
-6. Run `skillctl plan --json --config my-config`.
+3. Review new and ungranted skills in valid proposal output.
+4. Resolve each `candidate-invalid` error before publication.
+5. Review `git diff -- my-config/skill-lock.yaml`.
+6. Run `uv run --frozen --python 3.12 skillctl resolve --json --config my-config`.
+7. Run `uv run --frozen --python 3.12 skillctl plan --json --config my-config`.
 
 Commit the accepted lock with your normal Git process.
 
 The CLI does not stage, commit, push, merge, or open a pull request.
 
-## 4. Apply the Accepted State
+## 4. Apply the Current State
 
 ```console
-skillctl validate --config my-config
-skillctl plan --json --config my-config
-skillctl apply --config my-config
-skillctl verify --config my-config
-skillctl status --json --config my-config
+uv run --frozen --python 3.12 skillctl validate --config my-config
+uv run --frozen --python 3.12 skillctl plan --json --config my-config
+uv run --frozen --python 3.12 skillctl apply --config my-config
+uv run --frozen --python 3.12 skillctl verify --config my-config
+uv run --frozen --python 3.12 skillctl status --json --config my-config
 ```
 
-If the reviewed plan contains REMOVE, use `skillctl apply --yes --config my-config`.
+`apply` does not consume the displayed `plan` output. It recomputes and immediately executes a new plan from the current state.
 
-`apply` rebuilds the plan from the current configuration and target state. It rejects stale or hostile state.
+CAUTION: `--yes` authorizes each REMOVE in this new plan. V1 has no plan digest or approved plan-file input.
+
+`apply` rejects stale or hostile state that its fresh checks detect. It never follows a mutable `track` value.
 
 `verify` hashes each complete cached source snapshot. It also checks ungranted content against the exact lock.
 

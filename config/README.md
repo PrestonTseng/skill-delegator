@@ -2,7 +2,7 @@
 
 The `config/` directory contains a complete and safe example.
 
-Use this example to learn the CLI. Do not replace it with real authority paths on generic `main`.
+Use this example to learn the CLI. Do not replace it with real authority paths.
 
 ## Files
 
@@ -43,7 +43,7 @@ The final `plan` exits with status 0.
 
 ## Create a Real Configuration
 
-Copy this directory to a separate location or authority branch:
+Copy this directory to a separate configuration directory:
 
 ```console
 cp -R config my-config
@@ -51,7 +51,13 @@ cp -R config my-config
 
 Set `fixture_policy: none`. Then replace the example source, pool, target roots, and grants.
 
-Run `skillctl lock --config my-config` after you change a source. This command replaces the example lock with an exact lock for your source.
+Run this command after you change a source:
+
+```console
+uv run --frozen --python 3.12 skillctl lock --config my-config
+```
+
+This command replaces the example lock with an exact lock for your source.
 
 Read the [README](../README.md) for the complete onboarding procedure. Read the [configuration reference](../docs/configuration.md) for all field rules.
 
