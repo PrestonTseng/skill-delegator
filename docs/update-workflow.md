@@ -12,7 +12,7 @@ uv run --frozen --python 3.12 skillctl update --check --config my-config
 
 For a Git source, this command compares the tracked reference. For a filesystem source, it compares the complete tree identity.
 
-The command can write immutable cache snapshots. It does not write the lock or change a target.
+The command can create the cache root and temporary Git checkout data. It does not publish immutable snapshots, write the lock, or change a target.
 
 Exit status 0 means no change. Status 1 means that a change exists. Status 3 means that the operation is unavailable or blocked.
 
