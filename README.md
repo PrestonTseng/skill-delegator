@@ -1,342 +1,249 @@
 # skill-delegator
 
-## What the tool does
+[![CI](https://github.com/PrestonTseng/skill-delegator/actions/workflows/ci.yml/badge.svg)](https://github.com/PrestonTseng/skill-delegator/actions/workflows/ci.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-`skill-delegator` publishes a reviewed set of skills as deterministic symlinks.
-It reads one authority configuration in each invocation.
-It fails closed when an input or boundary is invalid.
+`skill-delegator` publishes reviewed skills to local target directories as deterministic symlinks.
 
-The tool locks mutable source declarations to exact source identities.
-It resolves grants inside the authority pool.
-It compares the desired state with the current targets.
-It applies reviewed changes to manager-owned links.
-It writes content-addressed verification receipts.
+It gives one authority a controlled skill pool. That authority can grant selected skills to one or more targets.
 
-V1 requires Python 3.12 or later on POSIX.
-The verified release environment is Linux.
-V1 uses `fcntl`, descriptor-relative filesystem operations, and `/proc` descriptor paths.
+## Why use it?
 
-## Safety boundary
+Use `skill-delegator` when you need these controls:
 
-V1 creates symlinks only.
-It is not a filesystem sandbox.
-It preserves unmanaged target content.
-It does not make untrusted local processes safe.
+- Keep skill sources and target grants in versioned YAML files.
+- Lock mutable sources to exact Git commits and content hashes.
+- Review every target change before it occurs.
+- Preserve files and links that the tool does not manage.
+- Detect drift and create content-addressed verification receipts.
+- Keep each authority configuration independent.
 
-One invocation uses exactly one authority configuration.
-The engine has no global authority hierarchy.
-It cannot infer another authority pool or grant.
-It cannot change another authority domain.
+## Requirements
 
-`apply` is the only command that reconciles targets.
-A REMOVE operation requires a valid manager record.
-A REMOVE operation also requires `--yes`.
-Do not add `--yes` unless a human reviewed each REMOVE operation.
+- Python 3.12 or later
+- A POSIX operating system
+- Git
+- [uv](https://docs.astral.sh/uv/)
 
-The tool does not select trusted source content.
-The owner must decide whether each source is safe to delegate.
+The verified release environment is Linux. V1 uses `fcntl`, descriptor-relative file operations, and `/proc` descriptor paths.
 
-The CLI never commits, pushes, merges, or opens a pull request.
-The CLI never restarts a worker or another runtime.
-Configuration edits do not automatically apply in V1.
-The engine never starts the next authority invocation.
+## Quick Start
 
-## Install and test the safe example
+The repository includes a safe example. It reads a test skill and writes only to ignored paths under `var/`.
 
-The `main` branch contains only the generic engine, generic documents, and the safe example.
-Niles maintains only the generic tool on `main` and the Simple English documents.
-The safe example does not name a real agent profile.
-
-The safe example reads `tests/fixtures/example-source`.
-It writes generated data only below ignored `var/cache/`, `var/example-targets/`, and `var/receipts/`.
-
-Run these commands from a clean generic checkout:
+### 1. Clone and install
 
 ```console
+git clone https://github.com/PrestonTseng/skill-delegator.git
+cd skill-delegator
 uv sync --locked --python 3.12
-uv run --frozen --python 3.12 pytest -q
+```
+
+### 2. Inspect the example configuration
+
+```console
 uv run --frozen --python 3.12 skillctl validate
-uv run --frozen --python 3.12 skillctl lock
 uv run --frozen --python 3.12 skillctl resolve --json
+```
+
+The default configuration is in `config/`. It grants one example skill to two example targets.
+
+### 3. Build the plan
+
+```console
+uv run --frozen --python 3.12 skillctl lock
 uv run --frozen --python 3.12 skillctl plan --json
+```
+
+The first `plan` exits with status 1. This status means that the plan contains changes.
+
+Review every `CREATE`, `REPLACE`, `REMOVE`, and `KEEP` operation before you continue.
+
+### 4. Apply and verify the plan
+
+```console
 uv run --frozen --python 3.12 skillctl apply
 uv run --frozen --python 3.12 skillctl verify
 uv run --frozen --python 3.12 skillctl status --json
+uv run --frozen --python 3.12 skillctl plan --json
 ```
 
-The first `plan` normally exits 1 because it finds CREATE operations.
-After `apply`, `plan` exits 0.
-A repeated `lock` keeps the same lock bytes for the same source state.
-A repeated `apply` reports `Already converged`.
-Identical verification evidence uses the same receipt path.
+The final `plan` exits with status 0. The targets now match the configuration.
 
-CAUTION: Never replace the safe example on `main` with real authority paths.
-Real source and target paths belong only in an authority branch that its owner accepts.
+A repeated `apply` reports `Already converged`. Identical verification evidence uses the same receipt path.
 
-## The five configuration files
+## Create Your Configuration
 
-Each authority configuration contains exactly five YAML files.
-Each file uses `schema_version: 1`.
-The schemas reject unknown fields and duplicate YAML keys.
+Each authority uses one directory with five YAML files.
 
-For the Preston→Niles authority, Preston alone writes and accepts the desired state.
-Niles must not author the Preston desired state.
-Niles can review the generic engine and these generic documents.
-
-| File | Purpose | Owner for Preston→Niles |
+| File | Purpose | Maintainer |
 |---|---|---|
-| `authority.yaml` | Names the authority and requires `fail_closed: true`. | Preston writes and accepts it. |
-| `sources.yaml` | Declares reviewed Git or filesystem sources. | Preston writes and accepts it. |
-| `pool.yaml` | Sets the maximum set that this authority can delegate. | Preston writes and accepts it. |
-| `delegations.yaml` | Declares targets and grants from the pool. | Preston writes and accepts it. |
-| `skill-lock.yaml` | Records exact source, tree, skill, path, and content identities. | The tool generates it. Preston reviews and accepts it. |
+| `authority.yaml` | Names the authority and enables fail-closed behavior. | The authority owner |
+| `sources.yaml` | Declares reviewed Git or filesystem sources. | The authority owner |
+| `pool.yaml` | Sets the maximum skill set that the authority can grant. | The authority owner |
+| `delegations.yaml` | Declares target roots and grants from the pool. | The authority owner |
+| `skill-lock.yaml` | Records exact source and skill identities. | `skillctl lock` generates it. The authority owner reviews it. |
 
-The pool is a delegation ceiling.
-A lock operation does not add discovered skills to the pool.
-Each grant must be in the pool and the exact lock.
+All files use `schema_version: 1`. The schemas reject duplicate YAML keys and unknown fields.
 
-## Create an authority branch and configuration
+### 1. Copy the safe example
 
-Keep generic `main` free of real authority paths.
-Create a separate long-lived branch from the accepted generic commit.
-Use a branch that has one named authority owner.
-
-Set `AUTHORITY_BRANCH` to the accepted branch name.
-Then create the branch:
+Keep real paths out of the generic `config/` directory.
 
 ```console
-git switch main
-git switch -c "$AUTHORITY_BRANCH"
+cp -R config my-config
 ```
 
-On that branch, replace the safe example with the authority configuration.
-Do not first add real paths to `main`.
-Do not copy accepted authority files back to `main`.
+### 2. Name the authority
 
-For Preston→Niles, Preston writes the four desired-state files.
-Then Preston generates `skill-lock.yaml` with `lock`.
-Preston reviews all five files before acceptance.
-Preston uses the normal human-controlled Git process to commit them.
+Edit `my-config/authority.yaml`:
 
-If the configuration is not in repository-root `config/`, use `--config path/to/config`.
-Run only one configuration directory in each invocation.
+```yaml
+schema_version: 1
+authority:
+  id: team-a
+  fail_closed: true
+  fixture_policy: none
+```
 
-The commands have these write boundaries:
+### 3. Add a reviewed source
 
-- `validate` reads the configuration and creates no source or target.
-- `lock` writes only the exact lock and the ignored source cache.
-- `resolve` reads desired state and does not write a target.
-- `plan` reads current state and does not write a target.
-- `update` writes only source observations and the candidate exact lock.
-- `apply` is the only target-reconciliation command.
-- `verify` reads fresh evidence and can publish a receipt.
-- `status` reads fresh evidence and does not publish a receipt.
+Edit `my-config/sources.yaml`:
 
-## Authority operation workflow
+```yaml
+schema_version: 1
+sources:
+  - id: shared
+    type: git
+    location: https://github.com/example/skills.git
+    track: main
+    skill_root: skills
+```
 
-Use this exact order for a new or changed authority configuration:
+A filesystem source uses `type: filesystem` and does not use `track`.
+
+### 4. Set the authority pool
+
+Edit `my-config/pool.yaml`:
+
+```yaml
+schema_version: 1
+skills:
+  - shared/code-review
+```
+
+The pool is a ceiling. Source discovery does not add skills to the pool.
+
+### 5. Add a target and its grants
+
+Edit `my-config/delegations.yaml`:
+
+```yaml
+schema_version: 1
+targets:
+  - id: worker
+    root: /srv/agents/worker/skills
+    grants:
+      - shared/code-review
+```
+
+Each grant must exist in both the pool and the exact lock.
+
+### 6. Generate and review the exact lock
+
+```console
+uv run --frozen --python 3.12 skillctl lock --config my-config
+uv run --frozen --python 3.12 skillctl validate --config my-config
+uv run --frozen --python 3.12 skillctl resolve --json --config my-config
+uv run --frozen --python 3.12 skillctl plan --json --config my-config
+```
+
+Review all five files. Then commit the accepted configuration with your normal Git process.
+
+Read the [configuration reference](docs/configuration.md) before you use advanced paths or multiple sources.
+
+## Safe Operation Workflow
+
+Use this workflow for each new or changed configuration:
 
 ```text
-validate → lock → resolve → plan → human review/commit → apply → verify → status
+lock → validate → resolve → plan → human review and commit → apply → verify → status
 ```
 
-Run the commands on the authority branch:
+`lock` changes only `skill-lock.yaml` and the ignored source cache. It does not change a target.
+
+`resolve` and `plan` do not change a target. Use their output to review the desired and current states.
+
+`apply` is the only command that changes targets.
+
+`verify` reads fresh source and target evidence. It can write a content-addressed receipt.
+
+`status` reads fresh evidence without writing a receipt.
+
+### REMOVE operations
+
+CAUTION: Do not add `--yes` until a human reviews every REMOVE operation. A REMOVE can erase a manager-owned link.
+
+If the reviewed plan contains a REMOVE, use this command:
 
 ```console
-skillctl validate --config config
-skillctl lock --config config
-skillctl resolve --json --config config
-skillctl plan --json --config config
+skillctl apply --yes --config my-config
 ```
 
-Review the complete plan.
-Review each CREATE, REPLACE, REMOVE, and KEEP operation.
-Review `git diff -- config/`.
-Commit only the accepted configuration and exact lock.
+The tool preserves unmanaged target content. A REMOVE also requires a valid manager record.
 
-Apply the committed state only after the human review:
+## Command Summary
 
-```console
-skillctl apply --config config
-skillctl verify --config config
-skillctl status --json --config config
-```
+| Command | Purpose | Target write |
+|---|---|---:|
+| `validate` | Validate all five configuration files. | No |
+| `lock` | Resolve sources and write the exact lock. | No |
+| `resolve --json` | Show the desired target state. | No |
+| `plan [--json]` | Compare the desired and current states. | No |
+| `apply [--yes]` | Apply the current validated plan. | Yes |
+| `verify` | Verify fresh evidence and write a receipt. | No |
+| `status [--json]` | Report fresh state without a receipt. | No |
+| `update --check` | Observe source changes. | No |
+| `update SOURCE|--all` | Write a candidate exact lock. | No |
 
-If the reviewed plan contains REMOVE, use this command instead:
+Run `skillctl COMMAND --help` for command options.
 
-```console
-skillctl apply --yes --config config
-```
+## Safety Model
 
-Do not use an old plan as approval for changed files.
-`apply` rebuilds the plan from the current configuration and target state.
-It rejects stale or hostile state.
+V1 creates symlinks only. It is not a filesystem sandbox or a malware scanner.
 
-If a consumer reads skills only at startup, restart it after successful verification.
-Use the runbook for that consumer.
-The CLI does not do this restart.
+One invocation reads one authority configuration. The engine has no global authority hierarchy.
 
-## Expected exits
+The tool does not select trusted source content. The authority owner must review each source before delegation.
 
-Argument-parser misuse exits 2.
-Treat configured paths in diagnostics as sensitive information.
+The CLI does not commit, push, merge, open pull requests, or restart another process.
 
-| Command | Exit | Meaning |
-|---|---:|---|
-| `validate` | 0 | The configuration is valid. |
-| `validate` | 2 | The configuration is invalid. |
-| `lock` | 0 | The exact lock and ignored source cache are ready. |
-| `lock` | 2 | The lock operation failed. |
-| `resolve --json` | 0 | Desired-state resolution succeeded. |
-| `resolve --json` | 2 | Desired-state resolution failed. |
-| `plan [--json]` | 0 | The targets are converged. |
-| `plan [--json]` | 1 | The plan contains changes. |
-| `plan [--json]` | 3 | The plan is blocked. |
-| `apply [--yes]` | 0 | The apply operation succeeded. |
-| `apply [--yes]` | 2 | An input error occurred. |
-| `apply [--yes]` | 3 | The apply operation is blocked. |
-| `apply [--yes]` | 4 | A REMOVE operation lacks confirmation. |
-| `apply [--yes]` | 5 | A transaction error occurred. |
-| `verify` | 0 | The targets are converged, and the receipt is published. |
-| `verify` | 1 | Drift exists. |
-| `verify` | 2 | An input error occurred. |
-| `verify` | 3 | The state is invalid, or receipt publication is blocked. |
-| `status [--json]` | 0 | The targets are converged. |
-| `status [--json]` | 1 | Drift exists. |
-| `status [--json]` | 2 | An input error occurred. |
-| `status [--json]` | 3 | The state is invalid. |
-| `update --check` | 0 | The observed source identity is unchanged. |
-| `update --check` | 1 | A source update was observed. |
-| `update --check` | 3 | The source is unavailable, or the operation is blocked. |
-| `update SOURCE|--all` | 0 | The candidate exact lock was published. |
-| `update SOURCE|--all` | 3 | The update operation is blocked. |
+Configuration changes do not apply automatically. The engine also does not start another authority invocation.
 
-## Preston→Niles, then Niles→worker/reviewer
+Read the [threat model](docs/threat-model.md) before production use.
 
-Complete the Preston→Niles authority first.
-Preston writes and accepts that authority configuration.
-Preston applies it to `/opt/data/skills`.
-Preston verifies it and gets a successful status.
+## Generated State
 
-Only then can Niles inventory the actual `/opt/data/skills` root.
-Niles can then create an independent Niles→worker/reviewer authority configuration.
-Niles owns the desired state in that downstream authority.
-Niles reviews and accepts its five files independently.
-Niles then applies and verifies that authority in a separate invocation.
+The tool can create these paths:
 
-The two authority configurations are independent domains.
-The shared engine does not make one configuration the parent of the other.
-The engine never invokes the downstream authority after the upstream operation.
+- `var/cache/sources/`: immutable source snapshots
+- `<target>/.skill-delegator/managed.json`: manager-owned link records
+- `<target>/.skill-delegator/`: transaction locks and failure evidence
+- `var/receipts/`: content-addressed verification receipts
 
-An optional future scheduler is outside V1.
-Do not design or enable a scheduler before one successful manual end-to-end cycle.
-A scheduler must preserve one configuration per invocation and the same human approval boundaries.
-
-## Source update workflow
-
-Source observation and target application are separate operations.
-A mutable Git `track` value is an update input.
-`apply` never uses `track` as an exact identity.
-
-First, observe available source changes:
-
-```console
-skillctl update --check --config config
-```
-
-This command can refresh the ignored source cache.
-It does not write the lock, targets, Git history, or runtime state.
-
-Then propose an exact lock for one source:
-
-```console
-skillctl update shared --json --config config
-```
-
-If a full source update is intended, use this command:
-
-```console
-skillctl update --all --json --config config
-```
-
-The update command validates and publishes only the candidate `skill-lock.yaml`.
-It does not apply targets.
-
-Review these items before acceptance:
-
-1. Review each old and new exact source identity.
-2. Review each changed artifact hash in the pool and grants.
-3. Review removed, renamed, new, and ungranted artifacts.
-4. Review `git diff -- config/skill-lock.yaml`.
-5. Run `skillctl resolve --json --config config`.
-6. Run `skillctl plan --json --config config`.
-7. Commit the accepted exact lock with the human-controlled Git process.
-8. Run `skillctl apply --config config`.
-9. Run `skillctl verify --config config`.
-10. Run `skillctl status --json --config config`.
-
-## Test safety
-
-Generic pytest mutation tests can run only with the exact safe example at repository-root `config/`.
-The safe configuration uses `authority.id: main-example` and `fixture_policy: safe-main-example`.
-
-The pytest session guard verifies the exact safe-configuration file set and hashes.
-The guard stops before collection when the root configuration is not the accepted safe example.
-It also rejects paths outside the repository fixture and generated roots.
-It rejects escapes through an existing symlink ancestor.
-
-Mutation tests that copy root configuration must use `tests.fixture_safety`.
-That helper rewrites each source and target below the current `tmp_path`.
-It verifies source, cache, target, and receipt roots before each mutation command.
-
-CAUTION: Never run generic pytest directly on an authority branch.
-A generic test suite is not an authority verification method.
-
-For engine acceptance, export the accepted engine to an isolated tree.
-Restore the accepted safe example in that isolated tree.
-Then run the generic tests there.
-
-If an intentional review changes the accepted safe example, update `SAFE_CONFIG_SHA256` in `conftest.py` in the same commit.
-Follow [the safe example instructions](config/README.md) for the exact hash command.
-Never add authority-specific paths to the safe manifest.
-
-## Recovery and stop conditions
-
-If `validate`, `lock`, or `resolve` returns a nonzero exit, stop.
-If `plan` exits 3, stop.
-If the plan contains an unexpected operation, stop.
-If the configuration diff contains an unreviewed path or grant, stop.
-If any REMOVE operation lacks explicit approval, stop before `apply`.
-
-If `apply` exits 2, 3, 4, or 5, do not start another authority invocation.
-Read the bounded diagnostic and inspect the affected target.
-Preserve `failure.json` and transaction evidence for review.
-Do not remove an unmanaged object to force convergence.
-Do not assume that a cleanup error caused a rollback.
-
-If `verify` or `status` returns a nonzero exit, treat the state as not accepted.
-Do not restart a runtime.
-Do not start the downstream authority invocation.
-Correct the cause, and then repeat the manual workflow.
-
-To restore an older lock, restore its reviewed bytes from Git.
-Then run `plan`.
-Review the complete plan.
-Then run `skillctl apply --config config`.
-Then run `skillctl verify --config config`.
-Then run `skillctl status --json --config config`.
-The tool does not automatically restore an old lock after lock publication.
-
-After a committed apply, inspect reported cleanup errors.
-Remove residual manager transaction directories only after deliberate review.
+Do not commit generated caches, targets, transaction data, or receipts as configuration.
 
 ## Documentation
 
+- [Configuration reference](docs/configuration.md)
+- [Architecture](docs/architecture.md)
+- [Source update workflow](docs/update-workflow.md)
+- [Threat model and security limits](docs/threat-model.md)
+- [Safe example notes](config/README.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
-- [MIT license](LICENSE)
-- [Architecture and authority scope](docs/architecture.md)
-- [Configuration reference](docs/configuration.md)
-- [Source update and apply workflow](docs/update-workflow.md)
-- [Threat model and limits](docs/threat-model.md)
-- [Safe example notes](config/README.md)
+
+## License
+
+This project uses the [MIT License](LICENSE).

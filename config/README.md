@@ -1,27 +1,69 @@
-# Configuration
+# Safe Example Configuration
 
-These five YAML files form one authority instance. Every document has `schema_version: 1`, is checked against a strict bundled JSON Schema, rejects duplicate YAML keys, and rejects unknown fields.
+The `config/` directory contains a complete and safe example.
 
-- `authority.yaml`: one authority ID, mandatory `fail_closed: true`, and fixture policy.
-- `sources.yaml`: filesystem or Git source declarations. Git sources require a mutable `track`, but apply never consumes it.
-- `pool.yaml`: canonical skill IDs forming this authority's delegation ceiling.
-- `delegations.yaml`: target IDs, roots, and non-empty grants. Every grant must be in the pool.
-- `skill-lock.yaml`: generated exact source identity, canonical/runtime identity, source-relative path, and content hash.
+Use this example to learn the CLI. Do not replace it with real authority paths on generic `main`.
 
-Canonical IDs are `<source-id>/<path-relative-to-skill-root>`. Runtime names come from `SKILL.md` frontmatter and must be 1–128 ASCII letters, digits, dots, underscores, or hyphens, beginning with a letter or digit. A duplicate runtime name inside one target fails closed.
+## Files
 
-## Checked-in safe example
+The example contains these five files:
 
-`main-example` uses `fixture_policy: safe-main-example`. Its filesystem source is `../tests/fixtures/example-source`; its relative target roots normalize below ignored `../var/example-targets/`. Existing symlinked or non-directory target components are rejected. `validate` reads configuration only. `lock` may create ignored `var/cache`; `apply` creates only configured example targets and manager metadata; `verify` may create ignored `var/receipts`.
+- `authority.yaml` names the `main-example` authority.
+- `sources.yaml` reads `tests/fixtures/example-source`.
+- `pool.yaml` permits the `example/hello` skill.
+- `delegations.yaml` grants the skill to two example targets.
+- `skill-lock.yaml` records the exact source and skill hashes.
 
-Do not replace this policy with real authority paths on generic `main`. Copy and review configuration in an independent authority domain instead. The complete contract is at `docs/configuration.md` in a source checkout and `skill_delegator/docs/configuration.md` in an installed wheel.
+All generated paths stay below ignored directories in `var/`.
 
-### Updating the accepted safe example
+## Run the Example
 
-When an intentional review changes any accepted file, update the pytest guard in the same commit:
+Run these commands from the repository root:
 
-1. Finish the reviewed edits to exactly `config/README.md` and the five YAML files.
-2. Run `sha256sum config/README.md config/authority.yaml config/delegations.yaml config/pool.yaml config/skill-lock.yaml config/sources.yaml`.
-3. Replace the matching values in `SAFE_CONFIG_SHA256` in the repository `conftest.py` and run `pytest -q tests/integration/test_pytest_safety_guard.py`.
+```console
+uv sync --locked --python 3.12
+uv run --frozen --python 3.12 skillctl validate
+uv run --frozen --python 3.12 skillctl lock
+uv run --frozen --python 3.12 skillctl resolve --json
+uv run --frozen --python 3.12 skillctl plan --json
+```
 
-The manifest entry set and hashes are one reviewable contract; never add authority-specific paths to it.
+The first `plan` exits with status 1 because it contains CREATE operations.
+
+Review the plan. Then apply and verify it:
+
+```console
+uv run --frozen --python 3.12 skillctl apply
+uv run --frozen --python 3.12 skillctl verify
+uv run --frozen --python 3.12 skillctl status --json
+uv run --frozen --python 3.12 skillctl plan --json
+```
+
+The final `plan` exits with status 0.
+
+## Create a Real Configuration
+
+Copy this directory to a separate location or authority branch:
+
+```console
+cp -R config my-config
+```
+
+Set `fixture_policy: none`. Then replace the example source, pool, target roots, and grants.
+
+Run `skillctl lock --config my-config` after you change a source. This command replaces the example lock with an exact lock for your source.
+
+Read the [README](../README.md) for the complete onboarding procedure. Read the [configuration reference](../docs/configuration.md) for all field rules.
+
+## Update the Safe Example
+
+The test guard protects the exact safe configuration files and hashes.
+
+If an intentional review changes this example, update the guard in the same commit:
+
+1. Finish the reviewed edits to `config/README.md` and the five YAML files.
+2. Run `sha256sum` for those six files.
+3. Replace the matching values in `SAFE_CONFIG_SHA256` in `conftest.py`.
+4. Run `pytest -q tests/integration/test_pytest_safety_guard.py`.
+
+Do not add authority-specific paths to the safe manifest.

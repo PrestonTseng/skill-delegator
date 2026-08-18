@@ -1,62 +1,94 @@
-# Update, review, and apply workflow
+# Source Update Workflow
 
-Source update and target deployment are deliberately separate.
+Source updates and target changes are separate operations.
 
-## 1. Observe
-
-```console
-skillctl update --check --config config
-```
-
-For Git this refreshes/compares the tracked ref; for filesystem sources it compares tree identity. It may mutate ignored cache observations, but it does not write the lock, pool, grants, targets, Git index/history, commits, pushes, merges, PRs, or runtime state. Exit 0 means no change, 1 means a difference was observed, and 3 means unavailable/blocked.
-
-## 2. Propose an exact lock
+## 1. Observe Source Changes
 
 ```console
-skillctl update shared --json --config config
-# or, deliberately:
-skillctl update --all --json --config config
+skillctl update --check --config my-config
 ```
 
-The command resolves exact revisions, rebuilds and validates the complete candidate, reports authority-relevant artifact hash changes plus ungranted additions/removals, and atomically publishes only `skill-lock.yaml`. Missing pool/grant references block publication. An update command does not apply targets.
+For a Git source, this command compares the tracked reference. For a filesystem source, it compares the complete tree identity.
 
-`skillctl lock` is the explicit full relock operation and has the same separation from apply. Use it for initial locking or when a full source resolution is intended.
+The command can update ignored cache observations. It does not write the lock or change a target.
 
-## 3. Review and version
+Exit status 0 means no change. Status 1 means that a change exists. Status 3 means that the operation is unavailable or blocked.
 
-Review:
+## 2. Propose an Exact Lock
 
-1. old/new exact source identities (Git commit plus directly locked complete-snapshot tree hash, or filesystem tree hash);
-2. every pooled/delegated artifact hash change;
-3. removed/renamed artifacts and new ungranted artifacts;
-4. the complete `git diff -- config/skill-lock.yaml`;
-5. `skillctl resolve --json` and `skillctl plan --json`.
-
-Then use your normal human-controlled Git process to commit the lock. The CLI does not commit, stage, push, merge, or open a PR. Independent authority branches review and accept engine/config updates independently.
-
-Generic pytest is not safe authority-config verification and must never be invoked directly in an
-authority branch. For engine acceptance, export the accepted engine commit into an isolated tree,
-restore the checked-in generic `main-example` config and fixture, and run pytest there. The
-repository pytest session guard intentionally rejects authority root config before any test body.
-
-## 4. Apply the reviewed exact state
+Propose an update for one source:
 
 ```console
-skillctl validate --config config
-skillctl plan --json --config config
-skillctl apply --config config        # --yes if and only if reviewed REMOVE exists
-skillctl verify --config config
-skillctl status --json --config config
+skillctl update shared --json --config my-config
 ```
 
-Apply reconstructs desired/current state from current config and lock, locks targets, and rejects stale or hostile state. It never follows `track`. Verify independently freshly hashes each complete cached source snapshot once, checks that identity against the lock even for ungranted content, and writes a content-addressed receipt containing the Git commit plus snapshot hash (or filesystem snapshot hash).
+Propose updates for all sources:
 
-## Rollback model
+```console
+skillctl update --all --json --config my-config
+```
 
-Before the apply metadata commit boundary, the reconciler retains backups and restores exact manager-owned links/metadata when safe. It never removes a concurrently replaced unmanaged object merely to force rollback. A rollback failure is surfaced and bounded failure evidence may remain on pre-existing targets.
+The command resolves exact revisions and builds a complete candidate lock.
 
-After all target `managed.json` publications complete, apply is committed. Cleanup failures are reported as committed; operators should verify and clean residual manager transaction directories deliberately rather than assume rollback.
+It reports changed hashes, removed skills, renamed skills, and new ungranted skills. Missing pool or grant entries block publication.
 
-The lock's atomic `os.replace` is its commit boundary. No automatic old-lock rollback occurs after replace. Review/version control is the durable way to restore an older accepted lock: restore reviewed lock bytes in Git, plan, explicitly apply, and verify.
+The command writes only `skill-lock.yaml`. It does not change targets.
 
-No command restarts a worker or other runtime. If a consumer only discovers skills at startup, restart it manually after successful verification according to that consumer's runbook.
+Use `skillctl lock` for an initial lock or an intentional full relock.
+
+## 3. Review and Commit
+
+Review these items:
+
+1. Review each old and new exact source identity.
+2. Review each changed skill hash in the pool and grants.
+3. Review removed, renamed, new, and ungranted skills.
+4. Review `git diff -- my-config/skill-lock.yaml`.
+5. Run `skillctl resolve --json --config my-config`.
+6. Run `skillctl plan --json --config my-config`.
+
+Commit the accepted lock with your normal Git process.
+
+The CLI does not stage, commit, push, merge, or open a pull request.
+
+## 4. Apply the Accepted State
+
+```console
+skillctl validate --config my-config
+skillctl plan --json --config my-config
+skillctl apply --config my-config
+skillctl verify --config my-config
+skillctl status --json --config my-config
+```
+
+If the reviewed plan contains REMOVE, use `skillctl apply --yes --config my-config`.
+
+`apply` rebuilds the plan from the current configuration and target state. It rejects stale or hostile state.
+
+`verify` hashes each complete cached source snapshot. It also checks ungranted content against the exact lock.
+
+## Test Safety
+
+CAUTION: Do not run generic pytest directly with a real authority configuration at repository-root `config/`.
+
+The pytest session guard accepts only the exact checked-in safe example. It stops before test collection when the root configuration differs.
+
+For engine acceptance, export the engine to an isolated directory. Restore the checked-in safe example before you run the generic tests.
+
+## Rollback Model
+
+Before the manager-record commit boundary, the reconciler keeps backups. It restores exact manager-owned links and records when restoration is safe.
+
+The rollback does not erase an unmanaged object that another process replaced.
+
+After all target manager records are published, the apply is committed. Inspect and clean residual transaction directories after an explicit review.
+
+The lock has a separate commit boundary at its atomic replacement. The tool does not restore the prior lock automatically.
+
+To restore an older lock, restore its reviewed bytes from Git. Then run `plan`, `apply`, and `verify`.
+
+## Runtime Restart
+
+No command restarts another process.
+
+If a consumer reads skills only at startup, restart it after successful verification. Use the runbook for that consumer.

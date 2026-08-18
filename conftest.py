@@ -26,7 +26,7 @@ EXPECTED_AUTHORITY = {
     },
 }
 SAFE_CONFIG_SHA256 = {
-    "README.md": "995c9f5e8b775c5fcbb22b6e161123b5f1d1ff0a92c82de3d9eb96a898aa1674",
+    "README.md": "83ddb8bc06b8efeb42955e2be7ba2f73e4d034879c0ff759f578b0cf99f2b22b",
     "authority.yaml": "f3ac0bd41f8aaeb7af4e0d84231e03fd700273a2ad02877183d7e8ce615236b9",
     "delegations.yaml": "6754b8bdb54359aa44a1957065366f08fd607481040871bf4d428258e13717af",
     "pool.yaml": "e88cb540b9e6cc3e58f0f4198a6dcfcaaada225f57d49838741173ca9d30a76b",

@@ -1,43 +1,108 @@
-# Threat model and security limits
+# Threat Model and Security Limits
 
-## Assets and authority
+## Protected Assets
 
-The protected assets are exact source/lock identity, configured target boundaries, unmanaged target content, manager-owned symlinks/metadata, and honest verification evidence. Authority comes only from one invocation's five validated configuration files and exact lock. One authority cannot delegate beyond its pool or implicitly modify another authority domain.
+The tool protects these assets:
 
-## Fail-closed defenses
+- exact source and lock identity
+- configured target boundaries
+- unmanaged target content
+- manager-owned links and records
+- honest verification evidence
 
-V1 rejects, among other cases:
+One invocation gets authority from its five validated configuration files and exact lock.
 
-- malformed/duplicate-key/unknown-field configuration and manager metadata;
-- source, cache, target, metadata, transaction, and receipt symlink/non-directory escapes at covered boundaries;
-- broken or escaping source links and unsupported source special files;
-- mismatched configured/locked source sets, types, canonical prefixes/suffixes, or lock paths (including root-prefix confusion, normalization, traversal, and any remainder unequal to the canonical suffix), plus mismatched Git commits, complete snapshot tree hashes, and skill hashes;
-- hostile canonical or runtime names; hidden configured source-root prefixes are permitted only in separately validated snapshot-relative lock paths and never become canonical identity; duplicate runtime identities, path collisions, and grants outside the pool;
-- broken, missing, wrong-destination, escaping, or ambiguously owned managed links;
-- unmanaged collisions, stale plans, target/namespace identity replacement, and cooperating concurrent mutation applies;
-- receipt overwrite/collision and unsafe lock-publication outcomes.
+An authority cannot grant a skill outside its pool. It also cannot implicitly change another authority configuration.
 
-Mutation uses lexical checks plus descriptor-relative operations, retained directory descriptors/inode identities, stable-order `fcntl` locks, source re-hashing, staging, backups, journals, and explicit commit boundaries. Verification freshly hashes the full cached snapshot exactly once per source, so ungranted additions or changes invalidate evidence. REMOVE is limited to strict manager-owned state and requires CLI confirmation.
+## Fail-Closed Checks
 
-## Trusted and untrusted components
+V1 rejects these conditions:
 
-Operators must trust the selected source content enough to delegate it; this tool inventories and hashes skill files but does not decide whether their instructions are safe. YAML and frontmatter are parsed without code execution. Git is invoked without a shell and with terminal prompting disabled.
+- malformed configuration, duplicate YAML keys, and unknown fields
+- malformed manager records
+- source, cache, target, transaction, or receipt path escapes
+- broken or escaping source links
+- unsupported source special files
+- mismatched source sets, source types, paths, commits, tree hashes, or skill hashes
+- invalid canonical IDs or runtime names
+- duplicate runtime names and target path collisions
+- grants outside the pool or exact lock
+- broken, missing, escaping, or ambiguously owned managed links
+- collisions with unmanaged content
+- stale plans and target identity changes
+- concurrent mutation through cooperating `skillctl` processes
+- unsafe receipt or lock publication
 
-The local OS kernel, filesystem primitives, Python runtime, Git executable, and user account are in the trusted computing base. Cooperative callers use `skillctl` locking. A process with the same or stronger OS privileges can still mutate files, descriptors, process state, or binaries.
+Mutation uses lexical path checks and descriptor-relative file operations.
 
-## Explicit non-goals
+It also uses retained descriptors, inode checks, stable `fcntl` locks, source hashing, staging, backups, journals, and explicit commit boundaries.
 
-This is not a chroot, container, MAC policy, capability sandbox, malware scanner, signature/transparency system, secret scanner, or defense against root. It does not prevent an authorized local user from editing configured roots. It does not authenticate remote Git servers or establish source provenance beyond the recorded exact identity/hash. It does not provide remote deployment, runtime restart, or automatic Git operations.
+Verification hashes the complete cached snapshot. A change to ungranted content also invalidates the evidence.
 
-Unmanaged preservation means the reconciler does not intentionally delete entries absent from valid manager ownership records. It is not a claim that unmanaged content cannot race with the process or affect downstream consumers.
+A REMOVE can affect only strict manager-owned state. The CLI also requires explicit confirmation.
 
-## Known CANNOT VERIFY limits
+## Trusted Components
 
-- Deterministic fault injection and subprocess tests cover specified races and boundaries; they cannot exhaust every kernel/filesystem interleaving.
-- Multi-target apply provides rollback-oriented process semantics, not one atomic cross-directory/filesystem syscall. Power loss and unusual filesystem durability behavior are not exhaustively proven.
-- `fsync`, `flock`, inode, hard-link, atomic-replace, and `/proc` descriptor behavior can vary by filesystem/OS. The release candidate is exercised on Linux; macOS/Windows/network filesystems are CANNOT VERIFY for V1.
-- The tool detects content drift when it verifies/hashes; it cannot freeze hostile source or target processes outside its descriptor/lock protocol.
-- Receipt repository commit evidence is available only when exact tracked config bytes can be bound to the containing clean Git commit. Otherwise the receipt says unavailable; it does not guess.
-- A converged receipt proves the checked state at verification time, not future state or semantic safety of skill instructions.
+The authority owner must trust selected source content. The tool records exact content but does not decide whether instructions are safe.
 
-Run under least privilege, keep target roots dedicated where practical, review lock/plan diffs, retain receipts externally if needed, and independently control Git commits and runtime restarts.
+YAML and frontmatter parsing do not execute code. Git runs without a shell, and terminal prompts are disabled.
+
+The trusted computing base includes these components:
+
+- the local operating system kernel
+- filesystem operations
+- the Python runtime
+- the Git executable
+- the operating-system user account
+
+Cooperating callers use `skillctl` locks.
+
+A process with the same or stronger operating-system privileges can still change files, descriptors, process state, or binaries.
+
+## Non-Goals
+
+This tool is not any of these systems:
+
+- a chroot or container
+- a mandatory access-control policy
+- a capability sandbox
+- a malware or secret scanner
+- a signature or transparency system
+- a defense against root access
+- a remote deployment service
+- a runtime supervisor
+- an automatic Git service
+
+The tool does not authenticate a remote Git server. It records the exact identity that Git returns.
+
+Unmanaged preservation means that the reconciler does not intentionally erase entries without valid manager ownership.
+
+It does not prevent unmanaged content from racing with the process or affecting a downstream consumer.
+
+## Verification Limits
+
+Tests cover specified races and failure boundaries. They cannot cover every kernel or filesystem interleaving.
+
+A multi-target apply provides rollback-oriented process behavior. It is not one atomic operation across filesystems.
+
+Power loss and unusual filesystem durability behavior are not fully proven.
+
+`fsync`, `flock`, inode, hard-link, atomic replacement, and `/proc` behavior can differ by operating system and filesystem.
+
+The release is verified on Linux. V1 does not claim support for macOS, Windows, or network filesystems.
+
+The tool detects content drift when it hashes evidence. It cannot freeze hostile processes outside its lock protocol.
+
+A receipt records a repository commit only when clean tracked configuration bytes bind to that commit. Otherwise, the receipt reports that the commit is unavailable.
+
+A converged receipt proves the checked state at verification time. It does not prove future state or the semantic safety of skill instructions.
+
+## Operator Guidance
+
+Run the tool with the least required privilege.
+
+Use dedicated target roots when possible. Review lock changes and every plan before `apply`.
+
+Store receipts outside the managed host if you need independent evidence.
+
+Keep Git commits and runtime restarts under separate human control.

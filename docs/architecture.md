@@ -1,43 +1,101 @@
 # Architecture
 
-## One authority per invocation
+## One Authority per Invocation
 
-`skillctl` loads one configuration directory and constructs one `AuthorityConfig`. The engine has no parent/child registry and no cross-authority traversal. Pool containment, target grants, lock completeness, runtime-name uniqueness, and target-path collision checks are scoped to that one object.
+`skillctl` reads one configuration directory during each invocation.
 
-Independent authority domains can use the same code while retaining separate `config/` histories. A branch convention (`main` generic engine, separate authority branches) is a version-control workflow, not an authority hierarchy enforced by the process.
+The engine has no parent registry or cross-authority traversal. Pool rules, grants, locks, names, and target paths apply to one authority only.
 
-## Data flow
+Independent authorities can use the same code and keep separate configuration histories. This version-control pattern does not create an authority hierarchy.
+
+## Data Flow
 
 ```text
 sources.yaml ──lock──> immutable cache + skill-lock.yaml
-     five config files ──resolve──> DesiredState
-DesiredState + fresh target scan ──plan──> ReconciliationPlan
-reviewed/rebuilt plan ──apply──> managed symlinks + managed.json
-fresh desired/source/target evidence ──verify──> content-addressed receipt
+five configuration files ──resolve──> desired state
+desired state + target scan ──plan──> reconciliation plan
+reviewed current plan ──apply──> managed symlinks + managed.json
+fresh source and target evidence ──verify──> verification receipt
 ```
 
-`validate`, `resolve`, `plan`, and `status` do not intentionally mutate targets. `lock` mutates only the configured lock and ignored source cache. `update` is source/lock work only. `apply` is the sole target-reconciliation command. `verify` is read-only for sources/targets/config but may publish a receipt.
+`validate`, `resolve`, `plan`, and `status` do not change targets.
 
-## Identity and placement
+`lock` changes only the exact lock and ignored source cache. `update` changes only source observations or the candidate lock.
 
-Artifact identity is `<source-id>/<relative-path-from-skill-root>`. The canonical suffix uses strict non-hidden segments even when the configured `skill_root` itself contains safe hidden segments. The lock separately records the full snapshot-relative source path as exact `skill_root + canonical suffix`; resolution requires that lexical equality rather than prefix-only containment. Runtime identity is a safe bounded `SKILL.md` frontmatter `name`; duplicate runtime identities per target fail. Artifact paths—not runtime names or configured source-root prefixes—determine symlink placement: `<target-root>/<artifact-id>`.
+`apply` is the only command that changes targets. `verify` can write a receipt but does not change sources or targets.
 
-Apply consumes only exact lock identities and exact skill hashes. A Git lock binds both the resolved commit and a SHA-256 tree hash computed directly over the complete locked snapshot; a filesystem lock uses that complete tree hash as its revision. Mutable Git `track` values are update inputs, never apply inputs. Filesystem snapshots are cached at `var/cache/sources/<source-id>/<snapshot-tree-hash>/`; Git snapshots are cached at `var/cache/sources/<source-id>/<resolved-commit>/`. Both lock forms carry the complete snapshot tree hash.
+## Skill Identity
 
-## Symlink-only target model
+A canonical skill ID has this form:
 
-V1 creates symlinks and records only its own entries in `<target>/.skill-delegator/managed.json`. Unrecorded files, directories, and links are unmanaged and preserved. A REMOVE operation is authorized only by a prior valid manager record and requires `--yes` at the CLI.
+```text
+<source-id>/<path-relative-to-skill-root>
+```
 
-## Transaction and commit boundaries
+A configured `skill_root` can contain safe hidden segments. Those segments do not become part of the canonical skill ID.
 
-For a mutating apply, targets are locked in stable order using both target-root inode locks and `.skill-delegator/operation.lock`. The reconciler re-scans under lock, stages links, verifies exact source content, promotes with retained backups, removes staging, and publishes canonical `managed.json` for every target. Until all metadata publications complete, failure triggers rollback from retained descriptor-anchored backups and exact inode/raw-link journals. Once all metadata has been published, the transaction is committed; later cleanup failure is reported as committed and is never presented as a rollback.
+The lock records the complete source path. Resolution requires an exact match between this path, the skill root, and the canonical suffix.
 
-An apply transaction spans the configured targets in the invocation. This is process-level transactional behavior under the documented cooperative/local threat assumptions, not a filesystem-wide atomic primitive.
+A skill gets its runtime name from `SKILL.md` frontmatter. Duplicate runtime names in one target fail closed.
 
-Lock publication has a separate boundary: all staging, fsync, identity, byte, parent, and prior-public checks happen before one atomic `os.replace`. Successful replace is the commit boundary. After it, the public lock pathname is observed only; it is never rolled back or overwritten by cleanup.
+The canonical artifact ID sets the link path:
 
-Verification freshly hashes every complete cached source snapshot once per source before claiming its locked identity, including ungranted content. Receipts record Git commit plus directly locked snapshot tree hash (or the filesystem tree hash), use canonical JSON plus newline, and are named by the SHA-256 of those exact bytes. Publication is no-overwrite/content-addressed; repeated identical evidence reuses the path.
+```text
+<target-root>/<artifact-id>
+```
+
+## Exact Source Locks
+
+`apply` uses only exact lock identities and skill hashes.
+
+A Git lock records the resolved commit and a SHA-256 hash of the complete source snapshot.
+
+A filesystem lock records the same complete snapshot hash as its revision.
+
+Mutable Git `track` values are update inputs. `apply` never uses them as exact identities.
+
+Source snapshots use content-addressed cache paths below `var/cache/sources/`.
+
+## Target Model
+
+V1 creates symlinks only. It records its entries in `<target>/.skill-delegator/managed.json`.
+
+Other files, directories, and links are unmanaged. The tool preserves them.
+
+A REMOVE operation needs a valid manager record. The CLI also requires `--yes`.
+
+## Apply Transaction
+
+The reconciler locks targets in a stable order. It uses target inode locks and `.skill-delegator/operation.lock`.
+
+It scans the state again after it gets the locks. Then it stages links and checks exact source content.
+
+The reconciler keeps backups while it publishes links and manager records.
+
+Before all manager records are published, an error starts a bounded rollback. The rollback uses retained descriptors, backups, and link journals.
+
+After all manager records are published, the transaction is committed. A later cleanup error does not report a rollback.
+
+A multi-target apply gives process-level transaction behavior. It is not one atomic filesystem operation.
+
+## Lock Publication
+
+Lock publication uses one atomic `os.replace` after all staging and identity checks pass.
+
+This replacement is the lock commit boundary. The tool does not restore an old lock after this point.
+
+Use reviewed Git history to restore an older lock. Then run `plan`, `apply`, and `verify` again.
+
+## Verification Receipts
+
+Verification hashes each complete cached source snapshot once. Ungranted source changes also invalidate the evidence.
+
+A receipt uses canonical JSON with a final newline. Its filename is the SHA-256 hash of those exact bytes.
+
+Receipt publication does not overwrite an existing file. Identical evidence uses the same receipt path.
 
 ## Packaging
 
-JSON Schemas are package data and are read with `importlib.resources` when the source-tree schema directory is absent. The source distribution also carries README, configuration, docs, tests, and fixtures needed to reproduce the release gates.
+The wheel contains the schemas, documents, and safe example.
+
+The source distribution also contains the tests and fixtures that reproduce the release checks.
