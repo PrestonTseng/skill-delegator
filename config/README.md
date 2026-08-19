@@ -21,11 +21,11 @@ All generated paths stay below ignored directories in `var/`.
 Run these commands from the repository root:
 
 ```console
-uv sync --locked --python 3.12
-uv run --frozen --python 3.12 skillctl validate
-uv run --frozen --python 3.12 skillctl lock
-uv run --frozen --python 3.12 skillctl resolve --json
-uv run --frozen --python 3.12 skillctl plan --json
+uv sync --locked
+uv run skillctl validate
+uv run skillctl lock
+uv run skillctl resolve --json
+uv run skillctl plan --json
 ```
 
 The first `plan` exits with status 1 because it contains CREATE operations.
@@ -33,10 +33,10 @@ The first `plan` exits with status 1 because it contains CREATE operations.
 Review the plan. Then apply and verify it:
 
 ```console
-uv run --frozen --python 3.12 skillctl apply
-uv run --frozen --python 3.12 skillctl verify
-uv run --frozen --python 3.12 skillctl status --json
-uv run --frozen --python 3.12 skillctl plan --json
+uv run skillctl apply
+uv run skillctl verify
+uv run skillctl status --json
+uv run skillctl plan --json
 ```
 
 The final `plan` exits with status 0.
@@ -54,7 +54,7 @@ Set `fixture_policy: none`. Then replace the example source, pool, target roots,
 Run this command after you change a source:
 
 ```console
-uv run --frozen --python 3.12 skillctl lock --config my-config
+uv run skillctl lock --config my-config
 ```
 
 This command replaces the example lock with an exact lock for your source.

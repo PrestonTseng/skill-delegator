@@ -74,6 +74,26 @@ A canonical skill ID has this form:
 
 The list must contain at least one unique skill ID.
 
+Nested directories below `skill_root` are preserved in both the canonical ID and the target link. For example, given this source:
+
+```yaml
+- id: vendor
+  type: git
+  location: https://example.invalid/vendor/skills.git
+  track: main
+  skill_root: skills
+```
+
+an upstream manifest at `skills/engineering/review/SKILL.md` has:
+
+```text
+canonical ID: vendor/engineering/review
+target link:  <target-root>/vendor/engineering/review
+runtime name: the name in SKILL.md frontmatter
+```
+
+Keeping the source ID and nested category in the link makes third-party provenance visible without changing the runtime name.
+
 The pool is the maximum set that this authority can grant. Locking a source does not add discovered skills to the pool.
 
 ## `delegations.yaml`
@@ -102,7 +122,7 @@ For production, use a dedicated target root and the least required privilege.
 Run this command to generate the file:
 
 ```console
-uv run --frozen --python 3.12 skillctl lock --config my-config
+uv run skillctl lock --config my-config
 ```
 
 A filesystem lock has this shape:
@@ -157,10 +177,10 @@ Do not commit generated caches, example targets, transaction data, or receipts a
 After you edit the four owner-maintained files, generate the exact lock:
 
 ```console
-uv run --frozen --python 3.12 skillctl lock --config my-config
-uv run --frozen --python 3.12 skillctl validate --config my-config
-uv run --frozen --python 3.12 skillctl resolve --json --config my-config
-uv run --frozen --python 3.12 skillctl plan --json --config my-config
+uv run skillctl lock --config my-config
+uv run skillctl validate --config my-config
+uv run skillctl resolve --json --config my-config
+uv run skillctl plan --json --config my-config
 ```
 
 Review all five files and the complete plan. Commit the accepted configuration before you apply it.
@@ -168,9 +188,9 @@ Review all five files and the complete plan. Commit the accepted configuration b
 Then run:
 
 ```console
-uv run --frozen --python 3.12 skillctl apply --config my-config
-uv run --frozen --python 3.12 skillctl verify --config my-config
-uv run --frozen --python 3.12 skillctl status --json --config my-config
+uv run skillctl apply --config my-config
+uv run skillctl verify --config my-config
+uv run skillctl status --json --config my-config
 ```
 
 `apply` recomputes and immediately executes a new plan. It does not consume the displayed `plan` output.

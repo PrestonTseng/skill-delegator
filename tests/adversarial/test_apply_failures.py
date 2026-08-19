@@ -189,8 +189,15 @@ def test_replace_failure_after_staging_removal_retains_backup_for_exact_restorat
         nonlocal observed_backup_raw
         real_remove(transaction, kind)
         if kind == "staging" and observed_backup_raw is None:
-            backup = Path(f"/proc/self/fd/{transaction.backup_fd}") / "src" / "skill-0"
-            observed_backup_raw = os.readlink(backup)
+            source_fd = os.open(
+                "src",
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+                dir_fd=transaction.backup_fd,
+            )
+            try:
+                observed_backup_raw = os.readlink("skill-0", dir_fd=source_fd)
+            finally:
+                os.close(source_fd)
             raise OSError("failure after staging-tree removal")
 
     monkeypatch.setattr(reconciler, "_remove_transaction_tree", fail_after_staging_removal)

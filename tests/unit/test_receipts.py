@@ -296,6 +296,8 @@ def test_write_receipt_rolls_back_new_publication_when_primary_cleanup_close_fai
     root.mkdir(parents=True)
     real_close = receipts.os.close
     real_link = receipts.os.link
+    root_metadata = root.stat(follow_symlinks=False)
+    root_identity = (root_metadata.st_dev, root_metadata.st_ino)
     linked = False
     fired = False
 
@@ -308,10 +310,11 @@ def test_write_receipt_rolls_back_new_publication_when_primary_cleanup_close_fai
     def fail_primary_close(descriptor: int) -> None:
         nonlocal fired
         try:
-            descriptor_path = os.readlink(f"/proc/self/fd/{descriptor}")
+            metadata = os.fstat(descriptor)
+            is_root = (metadata.st_dev, metadata.st_ino) == root_identity
         except OSError:
-            descriptor_path = ""
-        if linked and not fired and descriptor_path == str(root):
+            is_root = False
+        if linked and not fired and is_root:
             fired = True
             real_close(descriptor)
             raise OSError("injected post-publication directory close failure")
@@ -340,10 +343,11 @@ def test_write_receipt_rolls_back_new_publication_when_primary_cleanup_close_fai
     def fail_only_final_cleanup_close(descriptor: int) -> None:
         nonlocal root_close_count
         try:
-            descriptor_path = os.readlink(f"/proc/self/fd/{descriptor}")
+            metadata = os.fstat(descriptor)
+            is_root = (metadata.st_dev, metadata.st_ino) == root_identity
         except OSError:
-            descriptor_path = ""
-        if descriptor_path == str(root):
+            is_root = False
+        if is_root:
             root_close_count += 1
             if root_close_count == 2:
                 real_close(descriptor)

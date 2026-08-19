@@ -639,10 +639,14 @@ def _restore_metadata(locked: _LockedTarget) -> None:
 
 
 def _remove_contents(directory_fd: int) -> None:
-    # os.listdir(fd) shares the open file description's directory offset with
-    # descriptors duplicated while traversing. Re-open through procfs so every
-    # pass has an independent offset while remaining anchored to this inode.
-    while names := os.listdir(f"/proc/self/fd/{directory_fd}"):
+    while True:
+        scan_fd = os.open(".", _DIR_FLAGS, dir_fd=directory_fd)
+        try:
+            names = os.listdir(scan_fd)
+        finally:
+            os.close(scan_fd)
+        if not names:
+            return
         for name in names:
             metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
             if stat.S_ISDIR(metadata.st_mode) and not stat.S_ISLNK(metadata.st_mode):

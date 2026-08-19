@@ -388,6 +388,8 @@ def test_receipt_ancestor_filesystem_failures_are_bounded_by_cli(
         assert main(["apply", "--config", str(config)]) == 0
         capsys.readouterr()
         real_fsync, real_open, real_close = receipts.os.fsync, receipts.os.open, receipts.os.close
+        root_metadata = os.stat("/", follow_symlinks=False)
+        root_identity = (root_metadata.st_dev, root_metadata.st_ino)
         fired = False
 
         def fail_fsync(fd, _failure=failure, _real_fsync=real_fsync):
@@ -406,10 +408,14 @@ def test_receipt_ancestor_filesystem_failures_are_bounded_by_cli(
                 raise OSError("injected ancestor open failure")
             return _real_open(path, flags, mode, dir_fd=dir_fd)
 
-        def fail_close(fd, _failure=failure, _real_close=real_close):
+        def fail_close(fd, _failure=failure, _real_close=real_close, _root_identity=root_identity):
             nonlocal fired
-            descriptor_path = os.readlink(f"/proc/self/fd/{fd}")
-            if _failure == "close" and not fired and descriptor_path == "/":
+            try:
+                metadata = os.fstat(fd)
+                is_root = (metadata.st_dev, metadata.st_ino) == _root_identity
+            except OSError:
+                is_root = False
+            if _failure == "close" and not fired and is_root:
                 fired = True
                 _real_close(fd)
                 raise OSError("injected ancestor close failure")

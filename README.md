@@ -22,11 +22,11 @@ Use `skill-delegator` when you need these controls:
 ## Requirements
 
 - Python 3.12 or later
-- Linux
+- Linux or macOS
 - Git
 - [uv](https://docs.astral.sh/uv/)
 
-V1 requires Linux. It uses `fcntl`, descriptor-relative file operations, and `/proc` descriptor paths.
+The engine uses POSIX advisory locking, descriptor-relative filesystem operations, and inode verification. Native Windows is not currently supported.
 
 ## Quick Start
 
@@ -37,14 +37,16 @@ The repository includes a safe example. It reads a test skill and writes only to
 ```console
 git clone https://github.com/PrestonTseng/skill-delegator.git
 cd skill-delegator
-uv sync --locked --python 3.12
+uv sync --locked
 ```
+
+`uv sync --locked` is the reproducible one-time setup. Normal operator commands below use `uv run skillctl ...`; uv selects a Python version compatible with `requires-python` and keeps the environment current. For strict reproduction after setup, add `--frozen` to `uv run`.
 
 ### 2. Inspect the example configuration
 
 ```console
-uv run --frozen --python 3.12 skillctl validate
-uv run --frozen --python 3.12 skillctl resolve --json
+uv run skillctl validate
+uv run skillctl resolve --json
 ```
 
 The default configuration is in `config/`. It grants one example skill to two example targets.
@@ -52,8 +54,8 @@ The default configuration is in `config/`. It grants one example skill to two ex
 ### 3. Build the plan
 
 ```console
-uv run --frozen --python 3.12 skillctl lock
-uv run --frozen --python 3.12 skillctl plan --json
+uv run skillctl lock
+uv run skillctl plan --json
 ```
 
 The first `plan` exits with status 1. This status means that the plan contains changes.
@@ -65,10 +67,10 @@ CAUTION: `apply` does not consume this displayed plan. It computes and immediate
 ### 4. Apply and verify the plan
 
 ```console
-uv run --frozen --python 3.12 skillctl apply
-uv run --frozen --python 3.12 skillctl verify
-uv run --frozen --python 3.12 skillctl status --json
-uv run --frozen --python 3.12 skillctl plan --json
+uv run skillctl apply
+uv run skillctl verify
+uv run skillctl status --json
+uv run skillctl plan --json
 ```
 
 The final `plan` exits with status 0. The targets now match the configuration.
@@ -159,10 +161,10 @@ For production, use a dedicated target root and the least required privilege.
 ### 6. Generate and review the exact lock
 
 ```console
-uv run --frozen --python 3.12 skillctl lock --config my-config
-uv run --frozen --python 3.12 skillctl validate --config my-config
-uv run --frozen --python 3.12 skillctl resolve --json --config my-config
-uv run --frozen --python 3.12 skillctl plan --json --config my-config
+uv run skillctl lock --config my-config
+uv run skillctl validate --config my-config
+uv run skillctl resolve --json --config my-config
+uv run skillctl plan --json --config my-config
 ```
 
 Review all five files. Then commit the accepted configuration with your normal Git process.
@@ -172,9 +174,9 @@ Review all five files. Then commit the accepted configuration with your normal G
 If you accept this V1 limit, run these commands:
 
 ```console
-uv run --frozen --python 3.12 skillctl apply --config my-config
-uv run --frozen --python 3.12 skillctl verify --config my-config
-uv run --frozen --python 3.12 skillctl status --json --config my-config
+uv run skillctl apply --config my-config
+uv run skillctl verify --config my-config
+uv run skillctl status --json --config my-config
 ```
 
 Read the [configuration reference](docs/configuration.md) before you use advanced paths or multiple sources.
@@ -208,7 +210,7 @@ CAUTION: `--yes` authorizes each REMOVE in the new plan that `apply` computes. A
 Run `plan` immediately before `apply`. If you accept that limit and expect a REMOVE, use this command:
 
 ```console
-uv run --frozen --python 3.12 skillctl apply --yes --config my-config
+uv run skillctl apply --yes --config my-config
 ```
 
 The tool preserves unmanaged target content. A REMOVE also requires a valid manager record.
@@ -227,7 +229,7 @@ The tool preserves unmanaged target content. A REMOVE also requires a valid mana
 | `update --check` | Observe source changes. | No |
 | `update SOURCE|--all` | Write a candidate exact lock. | No |
 
-Run `uv run --frozen --python 3.12 skillctl COMMAND --help` for command options.
+Run `uv run skillctl COMMAND --help` for command options.
 
 ## Safety Model
 

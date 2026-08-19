@@ -108,10 +108,10 @@ def test_filesystem_source_swap_uses_retained_inode_and_never_caches_outside_byt
     assert original_bytes != outside_bytes
     source = SourceSpec("local", "filesystem", source_root, PurePosixPath("skills"), None)
     cache = tmp_path / "cache"
-    real_validate = source_store.validate_snapshot_tree
+    real_validate = source_store.validate_tree_at
     fired = False
 
-    def swap_after_open(root: Path) -> Path:
+    def swap_after_open(root_fd: int, *, snapshot: bool) -> None:
         nonlocal fired
         if not fired:
             fired = True
@@ -121,9 +121,9 @@ def test_filesystem_source_swap_uses_retained_inode_and_never_caches_outside_byt
             else:
                 parent.rename(tmp_path / "parent-original")
                 parent.symlink_to(outside.parent, target_is_directory=True)
-        return real_validate(root)
+        real_validate(root_fd, snapshot=snapshot)
 
-    monkeypatch.setattr(source_store, "validate_snapshot_tree", swap_after_open)
+    monkeypatch.setattr(source_store, "validate_tree_at", swap_after_open)
 
     with pytest.raises(SourceError, match="filesystem-source-identity-changed"):
         resolve_sources(config_for(source), cache)
@@ -141,6 +141,71 @@ def test_filesystem_source_swap_uses_retained_inode_and_never_caches_outside_byt
             path.is_file() and path.read_bytes() == outside_bytes for path in cache.rglob("*")
         )
         assert not any(cache.rglob("*"))
+
+
+def test_cache_path_swap_never_writes_outside_retained_inode_and_cleans_staging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "one")
+    cache_root = tmp_path / "cache"
+    lexical_source_cache = cache_root / "local"
+    retained_cache = tmp_path / "retained-cache"
+    external_cache = tmp_path / "external-cache"
+    external_cache.mkdir()
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("."), None)
+    real_copy = source_store.copy_tree_into_at
+    fired = False
+
+    def swap_then_copy(source_fd: int, destination_fd: int) -> None:
+        nonlocal fired
+        if not fired:
+            fired = True
+            lexical_source_cache.rename(retained_cache)
+            lexical_source_cache.symlink_to(external_cache, target_is_directory=True)
+        real_copy(source_fd, destination_fd)
+
+    monkeypatch.setattr(source_store, "copy_tree_into_at", swap_then_copy)
+
+    with pytest.raises(SourceError, match="content-addressed-cache"):
+        resolve_sources(config_for(source), cache_root)
+
+    assert fired
+    assert tuple(external_cache.iterdir()) == ()
+    assert tuple(retained_cache.iterdir()) == ()
+
+
+def test_existing_cache_entry_replacement_during_hash_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "one")
+    cache_root = tmp_path / "cache"
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("."), None)
+    first = resolve_sources(config_for(source), cache_root)[0]
+    lexical_entry = first.root
+    retained_entry = tmp_path / "retained-entry"
+    real_hash = source_store.hash_tree_at
+    calls = 0
+
+    def swap_after_hash(root_fd: int) -> str:
+        nonlocal calls
+        calls += 1
+        digest = real_hash(root_fd)
+        if calls == 2:
+            lexical_entry.rename(retained_entry)
+            lexical_entry.mkdir()
+            (lexical_entry / "CORRUPT").write_text("hostile", encoding="utf-8")
+        return digest
+
+    monkeypatch.setattr(source_store, "hash_tree_at", swap_after_hash)
+
+    with pytest.raises(SourceError, match="content-addressed-cache-entry-identity-changed"):
+        resolve_sources(config_for(source), cache_root)
+
+    assert calls >= 2
+    assert tuple(path.name for path in lexical_entry.iterdir()) == ("CORRUPT",)
+    assert (retained_entry / "one" / "SKILL.md").is_file()
 
 
 @pytest.mark.parametrize(
@@ -369,15 +434,21 @@ def test_cache_race_accepts_concurrent_matching_real_directory(
     source_root = tmp_path / "source"
     write_skill(source_root, "skills/one")
     source = SourceSpec("local", "filesystem", source_root, PurePosixPath("skills"), None)
-    original_rename = Path.rename
 
-    def compete(staging: Path, destination: Path) -> Path:
-        if staging.name.startswith(".snapshot-"):
-            shutil.copytree(source_root, destination, symlinks=True)
-            raise OSError(race_errno, "competing directory")
-        return original_rename(staging, destination)
+    def compete(
+        staging: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        destination: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        assert src_dir_fd is not None
+        assert src_dir_fd == dst_dir_fd
+        cache_destination = tmp_path / "cache" / "local" / os.fsdecode(destination)
+        shutil.copytree(source_root, cache_destination, symlinks=True)
+        raise OSError(race_errno, "competing directory")
 
-    monkeypatch.setattr(source_store.Path, "rename", compete)
+    monkeypatch.setattr(source_store.os, "rename", compete)
 
     resolved = resolve_sources(config_for(source), tmp_path / "cache")
 
@@ -392,12 +463,21 @@ def test_cache_race_wraps_concurrent_corrupt_directory_and_cleans_staging(
     write_skill(source_root, "skills/one")
     source = SourceSpec("local", "filesystem", source_root, PurePosixPath("skills"), None)
 
-    def compete(staging: Path, destination: Path) -> Path:
-        destination.mkdir()
-        (destination / "corrupt").write_text("wrong", encoding="utf-8")
+    def compete(
+        staging: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        destination: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        assert src_dir_fd is not None
+        assert src_dir_fd == dst_dir_fd
+        cache_destination = tmp_path / "cache" / "local" / os.fsdecode(destination)
+        cache_destination.mkdir()
+        (cache_destination / "corrupt").write_text("wrong", encoding="utf-8")
         raise OSError(errno.ENOTEMPTY, "competing directory")
 
-    monkeypatch.setattr(source_store.Path, "rename", compete)
+    monkeypatch.setattr(source_store.os, "rename", compete)
 
     with pytest.raises(SourceError, match="cache race produced corrupt entry"):
         resolve_sources(config_for(source), tmp_path / "cache")

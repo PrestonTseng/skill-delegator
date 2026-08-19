@@ -216,8 +216,8 @@ def _render_update_checks(updates, *, json_output: bool) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if os.name != "posix":
-        print("skillctl error: V1 requires POSIX", file=sys.stderr)
+    if os.name != "posix" or sys.platform not in {"linux", "darwin"}:
+        print("skillctl error: supported platforms are Linux and macOS", file=sys.stderr)
         return 2
     if args.command == "validate":
         try:
