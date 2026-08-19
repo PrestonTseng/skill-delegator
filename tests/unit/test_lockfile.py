@@ -143,6 +143,38 @@ def test_filesystem_source_swap_uses_retained_inode_and_never_caches_outside_byt
         assert not any(cache.rglob("*"))
 
 
+def test_cache_path_swap_never_writes_outside_retained_inode_and_cleans_staging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "one")
+    cache_root = tmp_path / "cache"
+    lexical_source_cache = cache_root / "local"
+    retained_cache = tmp_path / "retained-cache"
+    external_cache = tmp_path / "external-cache"
+    external_cache.mkdir()
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("."), None)
+    real_copy = source_store.copy_tree_into_at
+    fired = False
+
+    def swap_then_copy(source_fd: int, destination_fd: int) -> None:
+        nonlocal fired
+        if not fired:
+            fired = True
+            lexical_source_cache.rename(retained_cache)
+            lexical_source_cache.symlink_to(external_cache, target_is_directory=True)
+        real_copy(source_fd, destination_fd)
+
+    monkeypatch.setattr(source_store, "copy_tree_into_at", swap_then_copy)
+
+    with pytest.raises(SourceError, match="content-addressed-cache"):
+        resolve_sources(config_for(source), cache_root)
+
+    assert fired
+    assert tuple(external_cache.iterdir()) == ()
+    assert tuple(retained_cache.iterdir()) == ()
+
+
 @pytest.mark.parametrize(
     "track",
     ("feature", "refs/heads/feature", "refs/remotes/origin/feature", "refs/tags/v1"),
