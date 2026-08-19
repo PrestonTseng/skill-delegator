@@ -1,0 +1,147 @@
+{
+  "toc_extension": {
+    "type": "extension",
+    "attrs": {
+      "layout": "default",
+      "extensionType": "com.atlassian.confluence.macro.core",
+      "extensionKey": "toc"
+    }
+  },
+  "plain_url_paragraph": {
+    "type": "paragraph",
+    "content": [
+      {
+        "type": "text",
+        "text": "{{DISPLAY_TEXT_OR_URL}}",
+        "marks": [
+          {
+            "type": "link",
+            "attrs": {
+              "href": "{{URL}}"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "inline_url_paragraph": {
+    "type": "paragraph",
+    "content": [
+      {
+        "type": "inlineCard",
+        "attrs": {
+          "url": "{{URL}}"
+        }
+      }
+    ]
+  },
+  "block_url_card": {
+    "type": "blockCard",
+    "attrs": {
+      "url": "{{URL}}"
+    }
+  },
+  "embed_url_extension": {
+    "type": "extension",
+    "attrs": {
+      "layout": "default",
+      "extensionType": "com.atlassian.confluence.macro.core",
+      "extensionKey": "native-embed:page",
+      "parameters": {
+        "macroParams": {
+          "alignment": {
+            "value": "center"
+          },
+          "url": {
+            "value": "{{URL}}"
+          },
+          "alwaysShowTitle": {
+            "value": "false"
+          },
+          "height": {
+            "value": "600"
+          }
+        },
+        "macroMetadata": {
+          "macroId": {
+            "value": "{{MACRO_ID}}"
+          },
+          "schemaVersion": {
+            "value": "1"
+          },
+          "title": "native-embed:page"
+        }
+      }
+    }
+  },
+  "jira_link_paragraph": {
+    "type": "paragraph",
+    "content": [
+      {
+        "type": "text",
+        "text": "{{JIRA_URL}}",
+        "marks": [
+          {
+            "type": "link",
+            "attrs": {
+              "href": "{{JIRA_URL}}"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "jira_inline_paragraph": {
+    "type": "paragraph",
+    "content": [
+      {
+        "type": "inlineCard",
+        "attrs": {
+          "url": "{{JIRA_URL}}"
+        }
+      }
+    ]
+  },
+  "jira_block_card": {
+    "type": "blockCard",
+    "attrs": {
+      "url": "{{JIRA_URL}}"
+    }
+  },
+  "jira_list_block_card": {
+    "type": "blockCard",
+    "attrs": {
+      "url": "{{JIRA_URL}}",
+      "datasource": {
+        "id": "{{DATASOURCE_ID}}",
+        "parameters": {
+          "jql": "{{JQL}}",
+          "cloudId": "{{CLOUD_ID}}"
+        },
+        "views": [
+          {
+            "type": "table",
+            "properties": {
+              "columns": [
+                { "key": "issuetype" },
+                { "key": "key" },
+                { "key": "summary" },
+                { "key": "assignee" },
+                { "key": "priority" },
+                { "key": "status" },
+                { "key": "updated" }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "status_lozenge": {
+    "type": "status",
+    "attrs": {
+      "text": "{{STATUS_TEXT}}",
+      "color": "{{STATUS_COLOR}}"
+    }
+  }
+}

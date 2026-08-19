@@ -1,0 +1,234 @@
+{
+  "baseline_page_id": "3801219073",
+  "peer_page_id": "3800924168",
+  "completed_example_page_id": "3664543877",
+  "cloud_id": "302f7dfa-a172-4986-b4ae-efd7021f110a",
+  "heading_order": [
+    "Candidate Info",
+    "Pipeline Overview",
+    "Stage 0 — Resume Review",
+    "Stage 1 — HR Screening Call",
+    "Stage 2 — 1st Technical Interview",
+    "Stage 3 — Take-home Assignment",
+    "Stage 4 — 2nd Technical Interview",
+    "Final Decision"
+  ],
+  "tables": [
+    {
+      "heading": "Candidate Info",
+      "width": 748.0,
+      "layout": "align-start",
+      "columns": 2,
+      "rows": 6,
+      "first_row_colwidths": [
+        374.0,
+        374.0
+      ],
+      "row_labels": [
+        "Name",
+        "Applied Position",
+        "Resume Received",
+        "Source",
+        "Resume Link"
+      ]
+    },
+    {
+      "heading": "Stage 0 — Resume Review",
+      "width": 748.0,
+      "layout": "align-start",
+      "columns": 2,
+      "rows": 4,
+      "first_row_colwidths": [
+        374.0,
+        374.0
+      ],
+      "row_labels": [
+        "Reviewer",
+        "Date",
+        "Result"
+      ]
+    },
+    {
+      "heading": "Stage 1 — HR Screening Call",
+      "width": 750.0,
+      "layout": "align-start",
+      "columns": 2,
+      "rows": 4,
+      "first_row_colwidths": [
+        375.0,
+        375.0
+      ],
+      "row_labels": [
+        "Interviewer",
+        "Date",
+        "Result"
+      ]
+    },
+    {
+      "heading": "Scoring — HR Screening Call",
+      "width": 1598.0,
+      "layout": "align-start",
+      "columns": 5,
+      "rows": 5,
+      "first_row_colwidths": [
+        208.0,
+        434.0,
+        93.0,
+        782.0,
+        81.0
+      ],
+      "row_labels": [
+        "Motivation for Applying",
+        "Salary Expectations",
+        "Availability",
+        "Previous Working Style"
+      ]
+    },
+    {
+      "heading": "Stage 2 — 1st Technical Interview",
+      "width": 752.0,
+      "layout": "align-start",
+      "columns": 2,
+      "rows": 4,
+      "first_row_colwidths": [
+        376.0,
+        376.0
+      ],
+      "row_labels": [
+        "Interviewer(s)",
+        "Date",
+        "Result"
+      ]
+    },
+    {
+      "heading": "Scoring — 1st Technical Interview",
+      "width": 1132.0,
+      "layout": "align-start",
+      "columns": 4,
+      "rows": 11,
+      "first_row_colwidths": [
+        49.0,
+        872.0,
+        90.0,
+        121.0
+      ],
+      "row_labels": [
+        "A",
+        "1",
+        "2",
+        "3",
+        "4",
+        "B",
+        "1",
+        "2",
+        "3",
+        "C"
+      ]
+    },
+    {
+      "heading": "Stage 3 — Take-home Assignment",
+      "width": 752.0,
+      "layout": "align-start",
+      "columns": 2,
+      "rows": 6,
+      "first_row_colwidths": [
+        376.0,
+        376.0
+      ],
+      "row_labels": [
+        "Reviewer(s)",
+        "Assignment Sent",
+        "Assignment Submitted",
+        "Repo / Submission Link",
+        "Result"
+      ]
+    },
+    {
+      "heading": "Scoring — Take-home Assignment",
+      "width": 1131.0,
+      "layout": "align-start",
+      "columns": 4,
+      "rows": 14,
+      "first_row_colwidths": [
+        49.0,
+        874.0,
+        99.0,
+        109.0
+      ],
+      "row_labels": [
+        "A",
+        "1",
+        "2",
+        "3",
+        "B",
+        "1",
+        "2",
+        "C",
+        "1",
+        "2",
+        "D",
+        "1",
+        "E"
+      ]
+    },
+    {
+      "heading": "Stage 4 — 2nd Technical Interview",
+      "width": 752.0,
+      "layout": "align-start",
+      "columns": 2,
+      "rows": 4,
+      "first_row_colwidths": [
+        376.0,
+        376.0
+      ],
+      "row_labels": [
+        "Interviewer(s)",
+        "Date",
+        "Result"
+      ]
+    },
+    {
+      "heading": "Scoring — 2nd Technical Interview",
+      "width": 1098.0,
+      "layout": "align-start",
+      "columns": 4,
+      "rows": 12,
+      "first_row_colwidths": [
+        49.0,
+        855.0,
+        86.0,
+        108.0
+      ],
+      "row_labels": [
+        "A",
+        "1",
+        "2",
+        "3",
+        "B",
+        "1",
+        "2",
+        "C",
+        "1",
+        "2",
+        "D"
+      ]
+    },
+    {
+      "heading": "Final Decision",
+      "width": 750.0,
+      "layout": "align-start",
+      "columns": 2,
+      "rows": 5,
+      "first_row_colwidths": [
+        375.0,
+        375.0
+      ],
+      "row_labels": [
+        "Decision",
+        "Decision Date",
+        "Decided By",
+        "Offer Details"
+      ]
+    }
+  ]
+}

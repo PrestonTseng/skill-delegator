@@ -17,7 +17,12 @@ from skill_delegator.inventory import (
     validate_snapshot_tree,
     validate_source_tree,
 )
-from skill_delegator.models import AuthorityConfig, ResolvedSkill, ResolvedSource, SourceSpec
+from skill_delegator.models import (
+    AuthorityConfig,
+    ResolvedSkill,
+    ResolvedSource,
+    SourceSpec,
+)
 from skill_delegator.safe_paths import (
     AnchoredDirectory,
     open_anchored_directory,
@@ -56,7 +61,9 @@ def _ensure_real_cache_directory(path: Path, *, description: str) -> AnchoredDir
     return open_anchored_directory(path, description=description.replace(" ", "-"))
 
 
-def _existing_cache_entry(cache: AnchoredDirectory, name: str, expected_hash: str) -> bool:
+def _existing_cache_entry(
+    cache: AnchoredDirectory, name: str, expected_hash: str
+) -> bool:
     """Validate one cache key through its retained source-cache descriptor."""
 
     try:
@@ -65,12 +72,14 @@ def _existing_cache_entry(cache: AnchoredDirectory, name: str, expected_hash: st
         return False
     except OSError as error:
         detail = str(error)[:_MAX_OS_ERROR_CHARS]
-        raise SourceError(f"cannot inspect content-addressed cache entry: {detail}") from error
+        raise SourceError(
+            f"cannot inspect content-addressed cache entry: {detail}"
+        ) from error
     if stat.S_ISLNK(metadata.st_mode):
         raise SourceError("content-addressed cache entry must not be a symlink")
     if not stat.S_ISDIR(metadata.st_mode):
         raise SourceError("content-addressed cache entry is corrupt")
-    destination = cache.descriptor_path / name
+    destination = cache.path / name
     validate_source_tree(destination)
     if hash_tree(destination) != expected_hash:
         raise SourceError("content-addressed cache entry is corrupt")
@@ -82,7 +91,9 @@ def _source_cache_root(cache_root: Path, source_id: str) -> AnchoredDirectory:
     lexical_root = Path(os.path.abspath(cache_root))
     if Path(source_id).parts != (source_id,) or source_id in {"", ".", ".."}:
         raise SourceError(f"source id cannot form a confined cache path: {source_id!r}")
-    cache = _ensure_real_cache_directory(lexical_root, description="content-addressed cache root")
+    cache = _ensure_real_cache_directory(
+        lexical_root, description="content-addressed cache root"
+    )
     try:
         cache.open_child(source_id, description="cache-source-directory")
         cache.verify(description="content-addressed-cache")
@@ -96,13 +107,15 @@ def _cache_snapshot(
     source_root: Path, cache: AnchoredDirectory, cache_key: str, expected_hash: str
 ) -> Path:
     if _existing_cache_entry(cache, cache_key, expected_hash):
-        return cache.descriptor_path / cache_key
+        return cache.path / cache_key
     cache.verify(description="content-addressed-cache")
-    staging = Path(tempfile.mkdtemp(prefix=".snapshot-", dir=cache.descriptor_path))
-    destination = cache.descriptor_path / cache_key
+    staging = Path(tempfile.mkdtemp(prefix=".snapshot-", dir=cache.path))
+    destination = cache.path / cache_key
     try:
         shutil.rmtree(staging)
-        shutil.copytree(source_root, staging, symlinks=True, ignore=shutil.ignore_patterns(".git"))
+        shutil.copytree(
+            source_root, staging, symlinks=True, ignore=shutil.ignore_patterns(".git")
+        )
         validate_source_tree(staging)
         if hash_tree(staging) != expected_hash:
             raise SourceError("source changed while its snapshot was being created")
@@ -115,7 +128,9 @@ def _cache_snapshot(
                     f"cannot publish content-addressed cache entry: {detail}"
                 ) from error
             try:
-                valid_race_entry = _existing_cache_entry(cache, cache_key, expected_hash)
+                valid_race_entry = _existing_cache_entry(
+                    cache, cache_key, expected_hash
+                )
             except SourceError:
                 raise SourceError(
                     "content-addressed cache race produced corrupt entry: validation-failed"
@@ -157,7 +172,9 @@ def _resolved_skills(source: SourceSpec, root: Path) -> tuple[ResolvedSkill, ...
 def _resolve_filesystem(source: SourceSpec, cache_root: Path) -> ResolvedSource:
     if not isinstance(source.location, Path):
         raise SourceError(f"filesystem source {source.id} location must be a Path")
-    retained = open_existing_anchored_directory(source.location, description="filesystem-source")
+    retained = open_existing_anchored_directory(
+        source.location, description="filesystem-source"
+    )
     try:
         retained_root = retained.descriptor_path
         validate_snapshot_tree(retained_root)
@@ -193,18 +210,24 @@ def _tracked_commit_ref(track: str) -> str:
         return track
     if track.startswith("origin/"):
         return f"refs/remotes/{track}"
-    if len(track) == 40 and all(character in "0123456789abcdefABCDEF" for character in track):
+    if len(track) == 40 and all(
+        character in "0123456789abcdefABCDEF" for character in track
+    ):
         return track
     return f"refs/remotes/origin/{track}"
 
 
 def _resolve_git(source: SourceSpec, cache_root: Path) -> ResolvedSource:
     if not isinstance(source.location, str) or not source.track:
-        raise SourceError(f"git source {source.id} requires string location and tracked ref")
+        raise SourceError(
+            f"git source {source.id} requires string location and tracked ref"
+        )
     temporary = Path(tempfile.mkdtemp(prefix=".git-resolve-"))
     checkout = temporary / "checkout"
     try:
-        _run_git(["clone", "--quiet", "--no-checkout", "--", source.location, str(checkout)])
+        _run_git(
+            ["clone", "--quiet", "--no-checkout", "--", source.location, str(checkout)]
+        )
         revision = _run_git(
             [
                 "rev-parse",
@@ -217,7 +240,9 @@ def _resolve_git(source: SourceSpec, cache_root: Path) -> ResolvedSource:
         if len(revision) != 40 or any(
             character not in "0123456789abcdef" for character in revision
         ):
-            raise SourceError(f"git source {source.id} did not resolve to a SHA-1 commit")
+            raise SourceError(
+                f"git source {source.id} did not resolve to a SHA-1 commit"
+            )
         _run_git(["checkout", "--quiet", "--detach", revision], cwd=checkout)
         shutil.rmtree(checkout / ".git")
         # Validate the entire checkout before publishing any source-controlled links.
@@ -244,7 +269,9 @@ def _resolve_git(source: SourceSpec, cache_root: Path) -> ResolvedSource:
         shutil.rmtree(temporary, ignore_errors=True)
 
 
-def resolve_sources(config: AuthorityConfig, cache_root: Path) -> tuple[ResolvedSource, ...]:
+def resolve_sources(
+    config: AuthorityConfig, cache_root: Path
+) -> tuple[ResolvedSource, ...]:
     """Resolve all sources, sorted by ID, into exact cached snapshots."""
 
     resolved: list[ResolvedSource] = []

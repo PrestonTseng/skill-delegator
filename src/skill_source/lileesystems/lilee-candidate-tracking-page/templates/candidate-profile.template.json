@@ -1,0 +1,24 @@
+{
+  "page_title_suggestion": "2026 - Mr. Example Candidate - Backend Engineer - Stage 1",
+  "candidate_name": "Example Candidate",
+  "honorific": "Mr.",
+  "applied_position": "Backend Engineer",
+  "resume_received": "2026-06-27",
+  "candidate_source": "LinkedIn",
+  "resume_filename": "example-candidate-resume.pdf",
+  "resume_link": {
+    "label": "Resume",
+    "url": null,
+    "note": "Attachment pending upload"
+  },
+  "stage0_reviewer": "Preston",
+  "stage0_review_date": "2026-06-27",
+  "stage0_review_summary": [
+    "Summarize why this candidate is worth interviewing based on demonstrated evidence in the CV.",
+    "Capture key strengths, material gaps, and fit rationale without repeating the entire resume."
+  ],
+  "hr_screen_focus": [
+    "Confirm motivation for joining LILEE and interest in transportation / safety-critical software work.",
+    "Clarify communication style, collaboration habits, and practical working preferences relevant to cross-functional execution."
+  ]
+}

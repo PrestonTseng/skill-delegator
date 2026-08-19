@@ -1,6 +1,49 @@
 schema_version: 1
 sources:
-  - id: example
+  - id: anthropic
+    type: git
+    location: https://github.com/anthropics/skills.git
+    track: main
+    skill_root: skills
+  - id: superpowers
+    type: git
+    location: https://github.com/obra/superpowers.git
+    track: main
+    skill_root: skills
+  - id: ui-ux-pro-max-skill
+    type: git
+    location: https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git
+    track: main
+    skill_root: .claude/skills
+  - id: claude-video
+    type: git
+    location: https://github.com/bradautomates/claude-video.git
+    track: main
+    skill_root: skills
+  - id: mattpocock
+    type: git
+    location: https://github.com/mattpocock/skills.git
+    track: main
+    skill_root: skills   
+  - id: simple-english
+    type: git
+    location: https://github.com/AminBlg/SimpleEnglish.git
+    track: main
+    skill_root: skills   
+  - id: humanizer-zh-tw
+    type: git
+    location: https://github.com/kevintsai1202/Humanizer-zh-TW.git
+    track: main
+    skill_root: .   
+  - id: lileesystems
     type: filesystem
-    location: ../tests/fixtures/example-source
+    location: ../src/skill-source/lileesystems
+    skill_root: .
+  - id: railroad-rules
+    type: filesystem
+    location: ../src/skill-source/railroad-rules
+    skill_root: .
+  - id: software-development
+    type: filesystem
+    location: ../src/skill-source/software-development
     skill_root: .
