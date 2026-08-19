@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import os
 import stat
 from pathlib import Path, PurePosixPath
@@ -152,9 +153,14 @@ def test_descriptor_hash_and_copy_preserve_non_utf8_filename_bytes(tmp_path: Pat
     source = tmp_path / "source"
     source.mkdir()
     source_bytes = os.fsencode(source)
-    with open(os.path.join(source_bytes, b"payload-\xff"), "wb") as stream:
-        stream.write(b"payload")
-    os.symlink(b"payload-\xff", os.path.join(source_bytes, b"link-\xfe"))
+    try:
+        with open(os.path.join(source_bytes, b"payload-\xff"), "wb") as stream:
+            stream.write(b"payload")
+        os.symlink(b"payload-\xff", os.path.join(source_bytes, b"link-\xfe"))
+    except OSError as error:
+        if error.errno == errno.EILSEQ:
+            pytest.skip("filesystem rejects non-UTF8 filename bytes")
+        raise
     destination = tmp_path / "copy"
     root_fd = _open_directory(source)
     try:

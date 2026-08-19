@@ -30,9 +30,20 @@ _MAX_GIT_ERROR_CHARS = 2000
 _MAX_OS_ERROR_CHARS = 500
 
 
-def _run_git(args: list[str], *, cwd: Path | None = None) -> str:
+def _run_git(args: list[str], *, cwd: Path | None = None, cwd_fd: int | None = None) -> str:
+    if cwd is not None and cwd_fd is not None:
+        raise SourceError("git command received conflicting working directories")
     command = ["git", *args]
     environment = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    preexec_fn = None
+    pass_fds: tuple[int, ...] = ()
+    if cwd_fd is not None:
+
+        def enter_retained_directory() -> None:
+            os.fchdir(cwd_fd)
+
+        preexec_fn = enter_retained_directory
+        pass_fds = (cwd_fd,)
     try:
         result = subprocess.run(
             command,
@@ -42,6 +53,8 @@ def _run_git(args: list[str], *, cwd: Path | None = None) -> str:
             capture_output=True,
             text=True,
             timeout=_GIT_TIMEOUT_SECONDS,
+            pass_fds=pass_fds,
+            preexec_fn=preexec_fn,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise SourceError(f"git command failed: {command[1]}: {error}") from error
@@ -230,7 +243,7 @@ def _tracked_commit_ref(track: str) -> str:
 def _resolve_git(source: SourceSpec, cache_root: Path) -> ResolvedSource:
     if not isinstance(source.location, str) or not source.track:
         raise SourceError(f"git source {source.id} requires string location and tracked ref")
-    temporary = Path(tempfile.mkdtemp(prefix=".git-resolve-"))
+    temporary = Path(tempfile.mkdtemp(prefix=".git-resolve-")).resolve(strict=True)
     checkout = temporary / "checkout"
     try:
         _run_git(["clone", "--quiet", "--no-checkout", "--", source.location, str(checkout)])

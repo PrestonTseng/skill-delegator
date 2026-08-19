@@ -10,6 +10,7 @@ import pytest
 from skill_delegator.errors import SourceError
 from skill_delegator.lockfile import build_lock
 from skill_delegator.models import AuthorityConfig, PoolSpec, SourceSpec, TargetSpec
+from skill_delegator.safe_paths import AnchoredDirectory
 from skill_delegator.source_store import resolve_sources
 from skill_delegator.updater import check_updates, prepare_update, proposal_json, proposal_text
 
@@ -90,6 +91,22 @@ def test_check_reports_no_change_then_fast_forward_without_changing_lock(tmp_pat
     assert update.new_revision == second
     assert update.relation == "fast-forward"
     assert repr(old) == old_bytes
+
+
+def test_update_check_never_requires_descriptor_pseudo_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _work, bare, _ = git_fixture(tmp_path)
+    source = SourceSpec("upstream", "git", str(bare), PurePosixPath("skills"), "main")
+    config = authority(tmp_path, (source,))
+    old = locked(config)
+
+    def forbidden_descriptor_path(_self: AnchoredDirectory) -> Path:
+        raise AssertionError("update checks must use retained descriptors directly")
+
+    monkeypatch.setattr(AnchoredDirectory, "descriptor_path", property(forbidden_descriptor_path))
+
+    assert check_updates(config, old)[0].relation == "no-change"
 
 
 def test_check_reports_tag_movement_and_force_moved_branch(tmp_path: Path) -> None:
