@@ -211,12 +211,23 @@ def test_lock_cli_wraps_posix_competing_directory_race_as_precise_exit_2(
         yaml.safe_dump(sources, sort_keys=False), encoding="utf-8"
     )
 
-    def compete(staging: Path, destination: Path) -> Path:
-        destination.mkdir()
-        (destination / "corrupt").write_text("wrong", encoding="utf-8")
+    def compete(
+        staging: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        destination: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        assert src_dir_fd is None
+        assert dst_dir_fd is not None
+        cache_destination = (
+            project / "var" / "cache" / "sources" / "example" / os.fsdecode(destination)
+        )
+        cache_destination.mkdir()
+        (cache_destination / "corrupt").write_text("wrong", encoding="utf-8")
         raise OSError(errno.ENOTEMPTY, "competing directory")
 
-    monkeypatch.setattr(source_store.Path, "rename", compete)
+    monkeypatch.setattr(source_store.os, "rename", compete)
 
     assert_before_mutation(project, tmp_path, "lock")
     result = main(["lock", "--config", str(config_dir)])
