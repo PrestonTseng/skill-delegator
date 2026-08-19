@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import tempfile
+import uuid
 from dataclasses import replace
 from pathlib import Path
 
@@ -85,10 +87,25 @@ def _git_candidate(source: SourceSpec, old_revision: str, cache_root: Path) -> t
         cache_root, description="update check cache root"
     ) as check_root:
         check_root.verify(description="update-check-cache")
-        temporary = Path(tempfile.mkdtemp(prefix=".update-check-", dir=check_root.descriptor_path))
-        checkout = temporary / "repository"
+        staging = f".update-check-{uuid.uuid4().hex}"
+        staging_created = False
+        staging_fd = -1
+        checkout_fd = -1
         try:
-            _run_git(["clone", "--quiet", "--no-checkout", "--", source.location, str(checkout)])
+            os.mkdir(staging, mode=0o700, dir_fd=check_root.fd)
+            staging_created = True
+            staging_fd = check_root.open_existing_child(staging, description="update-check-staging")
+            _run_git(
+                ["clone", "--quiet", "--no-checkout", "--", source.location, "repository"],
+                cwd_fd=staging_fd,
+            )
+            directory_flags = (
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            checkout_fd = os.open("repository", directory_flags, dir_fd=staging_fd)
             candidate = _run_git(
                 [
                     "rev-parse",
@@ -96,7 +113,7 @@ def _git_candidate(source: SourceSpec, old_revision: str, cache_root: Path) -> t
                     "--end-of-options",
                     f"{_tracked_commit_ref(source.track)}^{{commit}}",
                 ],
-                cwd=checkout,
+                cwd_fd=checkout_fd,
             )
             if candidate == old_revision:
                 relation = "no-change"
@@ -104,23 +121,33 @@ def _git_candidate(source: SourceSpec, old_revision: str, cache_root: Path) -> t
                 relation = "tag-moved"
             else:
                 try:
-                    _run_git(["cat-file", "-e", f"{old_revision}^{{commit}}"], cwd=checkout)
+                    _run_git(["cat-file", "-e", f"{old_revision}^{{commit}}"], cwd_fd=checkout_fd)
                 except SourceError:
                     relation = "force-moved"
                 else:
                     try:
                         _run_git(
                             ["merge-base", "--is-ancestor", old_revision, candidate],
-                            cwd=checkout,
+                            cwd_fd=checkout_fd,
                         )
                     except SourceError:
                         relation = "diverged"
                     else:
                         relation = "fast-forward"
-            check_root.verify(description="update-check-cache")
+            check_root.verify_existing_child(
+                staging, staging_fd, description="update-check-staging"
+            )
             return candidate, relation
         finally:
-            shutil.rmtree(temporary, ignore_errors=True)
+            if checkout_fd >= 0:
+                os.close(checkout_fd)
+            if staging_fd >= 0:
+                os.close(staging_fd)
+            if staging_created:
+                try:
+                    shutil.rmtree(staging, dir_fd=check_root.fd)
+                except FileNotFoundError:
+                    pass
 
 
 def check_updates(config: AuthorityConfig, lock: SkillLock) -> tuple[SourceUpdate, ...]:

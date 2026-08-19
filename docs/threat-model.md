@@ -87,9 +87,9 @@ A multi-target apply provides rollback-oriented process behavior. It is not one 
 
 Power loss and unusual filesystem durability behavior are not fully proven.
 
-`fsync`, `flock`, inode, hard-link, atomic replacement, and `/proc` behavior can differ by operating system and filesystem.
+`fsync`, `flock`, inode, hard-link, atomic replacement, and descriptor-relative operation behavior can differ by operating system and filesystem.
 
-The release is verified on Linux. V1 does not claim support for macOS, Windows, or network filesystems.
+The supported local-filesystem targets are Linux and macOS; release acceptance requires CI verification on both. Native Windows and network filesystems are not currently supported.
 
 The tool detects content drift when it hashes evidence. It cannot freeze hostile processes outside its lock protocol.
 

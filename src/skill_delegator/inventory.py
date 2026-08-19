@@ -105,35 +105,51 @@ def validate_snapshot_tree(source_root: Path) -> Path:
     return source
 
 
-def _frontmatter(path: Path) -> tuple[str, str]:
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as error:
-        raise SourceError(f"{path}: invalid SKILL.md frontmatter: {error}") from error
+def _parse_frontmatter(text: str, display_path: str) -> tuple[str, str]:
     lines = text.splitlines()
     if not lines or lines[0] != "---":
-        raise SourceError(f"{path}: invalid SKILL.md frontmatter: missing opening delimiter")
+        raise SourceError(
+            f"{display_path}: invalid SKILL.md frontmatter: missing opening delimiter"
+        )
     try:
         end = lines.index("---", 1)
     except ValueError as error:
         raise SourceError(
-            f"{path}: invalid SKILL.md frontmatter: missing closing delimiter"
+            f"{display_path}: invalid SKILL.md frontmatter: missing closing delimiter"
         ) from error
     try:
         document = yaml.load("\n".join(lines[1:end]), Loader=_UniqueLoader)
     except yaml.YAMLError as error:
-        raise SourceError(f"{path}: invalid SKILL.md frontmatter: {error}") from error
+        raise SourceError(f"{display_path}: invalid SKILL.md frontmatter: {error}") from error
     if not isinstance(document, dict):
-        raise SourceError(f"{path}: invalid SKILL.md frontmatter: expected mapping")
+        raise SourceError(f"{display_path}: invalid SKILL.md frontmatter: expected mapping")
     name = document.get("name")
     description = document.get("description")
     if not isinstance(name, str) or not name.strip():
-        raise SourceError(f"{path}: invalid SKILL.md frontmatter: name is required")
+        raise SourceError(f"{display_path}: invalid SKILL.md frontmatter: name is required")
     if _RUNTIME_NAME_PATTERN.fullmatch(name) is None:
-        raise SourceError(f"{path}: invalid SKILL.md frontmatter: name is not a safe runtime id")
+        raise SourceError(
+            f"{display_path}: invalid SKILL.md frontmatter: name is not a safe runtime id"
+        )
     if not isinstance(description, str) or not description.strip():
-        raise SourceError(f"{path}: invalid SKILL.md frontmatter: description is required")
+        raise SourceError(f"{display_path}: invalid SKILL.md frontmatter: description is required")
     return name, description
+
+
+def _frontmatter_bytes(payload: bytes, display_path: str) -> tuple[str, str]:
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeError as error:
+        raise SourceError(f"{display_path}: invalid SKILL.md frontmatter: {error}") from error
+    return _parse_frontmatter(text, display_path)
+
+
+def _frontmatter(path: Path) -> tuple[str, str]:
+    try:
+        payload = path.read_bytes()
+    except OSError as error:
+        raise SourceError(f"{path}: invalid SKILL.md frontmatter: {error}") from error
+    return _frontmatter_bytes(payload, str(path))
 
 
 def inspect_skill(skill_directory: Path) -> SkillArtifact:

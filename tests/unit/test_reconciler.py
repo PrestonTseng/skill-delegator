@@ -9,6 +9,7 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
+from skill_delegator import reconciler
 from skill_delegator.inventory import hash_tree
 from skill_delegator.managed_state import scan_target
 from skill_delegator.models import (
@@ -229,3 +230,28 @@ def test_internally_inconsistent_reviewed_plan_is_rejected(tmp_path: Path) -> No
         apply_plan(replace(plan, operations=(operation,)), lock_timeout=0.2)
 
     assert not (root / "source" / "one").exists()
+
+
+def test_remove_contents_never_requires_procfs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "root"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    (nested / "payload").write_text("x", encoding="utf-8")
+    (root / "link").symlink_to(nested)
+    descriptor = os.open(root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    real_listdir = os.listdir
+
+    def without_procfs(path: os.PathLike[str] | str | bytes | int = "."):
+        if isinstance(path, str) and path.startswith("/proc/"):
+            raise AssertionError("descriptor-relative cleanup must not require procfs")
+        return real_listdir(path)
+
+    monkeypatch.setattr(reconciler.os, "listdir", without_procfs)
+    try:
+        reconciler._remove_contents(descriptor)
+    finally:
+        os.close(descriptor)
+
+    assert tuple(root.iterdir()) == ()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import os
 from pathlib import Path, PurePosixPath
 
@@ -93,9 +94,14 @@ def test_tree_hash_preserves_non_utf8_filename_and_symlink_bytes(tmp_path: Path)
     root = os.fsencode(tmp_path)
     filename = os.path.join(root, b"payload-\xff")
     linkname = os.path.join(root, b"link-\xfe")
-    with open(filename, "wb") as stream:
-        stream.write(b"one")
-    os.symlink(b"payload-\xff", linkname)
+    try:
+        with open(filename, "wb") as stream:
+            stream.write(b"one")
+        os.symlink(b"payload-\xff", linkname)
+    except OSError as error:
+        if error.errno == errno.EILSEQ:
+            pytest.skip("filesystem rejects non-UTF8 filename bytes")
+        raise
 
     first = hash_tree(tmp_path)
 
@@ -116,7 +122,12 @@ def test_discovery_rejects_noncanonical_skill_directory_segments(tmp_path: Path,
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX byte-oriented filenames")
 def test_rejects_non_utf8_skill_directory_as_unserializable_canonical_id(tmp_path: Path) -> None:
     skill = os.path.join(os.fsencode(tmp_path), b"skill-\xff")
-    os.mkdir(skill)
+    try:
+        os.mkdir(skill)
+    except OSError as error:
+        if error.errno == errno.EILSEQ:
+            pytest.skip("filesystem rejects non-UTF8 filename bytes")
+        raise
     with open(os.path.join(skill, b"SKILL.md"), "wb") as stream:
         stream.write(b"---\nname: runtime\ndescription: Test skill\n---\n")
 

@@ -7,7 +7,7 @@ The commands below use a source checkout that was installed with `uv sync`.
 ## 1. Observe Source Changes
 
 ```console
-uv run --frozen --python 3.12 skillctl update --check --config my-config
+uv run skillctl update --check --config my-config
 ```
 
 For a Git source, this command compares the tracked reference. For a filesystem source, it compares the complete tree identity.
@@ -21,13 +21,13 @@ Exit status 0 means no change. Status 1 means that a change exists. Status 3 mea
 Propose an update for one source:
 
 ```console
-uv run --frozen --python 3.12 skillctl update shared --json --config my-config
+uv run skillctl update shared --json --config my-config
 ```
 
 Propose updates for all sources:
 
 ```console
-uv run --frozen --python 3.12 skillctl update --all --json --config my-config
+uv run skillctl update --all --json --config my-config
 ```
 
 The command resolves exact revisions and builds a complete candidate lock.
@@ -38,7 +38,7 @@ The output reports valid authority-relevant hash changes and new ungranted skill
 
 A missing pooled or granted skill blocks the proposal before detailed output. The command reports a bounded `candidate-invalid` error.
 
-Use `uv run --frozen --python 3.12 skillctl lock --config my-config` for an initial lock or an intentional full relock.
+Use `uv run skillctl lock --config my-config` for an initial lock or an intentional full relock.
 
 ## 3. Review and Commit
 
@@ -49,8 +49,8 @@ Review these items:
 3. Review new and ungranted skills in valid proposal output.
 4. Resolve each `candidate-invalid` error before publication.
 5. Review `git diff -- my-config/skill-lock.yaml`.
-6. Run `uv run --frozen --python 3.12 skillctl resolve --json --config my-config`.
-7. Run `uv run --frozen --python 3.12 skillctl plan --json --config my-config`.
+6. Run `uv run skillctl resolve --json --config my-config`.
+7. Run `uv run skillctl plan --json --config my-config`.
 
 Commit the accepted lock with your normal Git process.
 
@@ -59,11 +59,11 @@ The CLI does not stage, commit, push, merge, or open a pull request.
 ## 4. Apply the Current State
 
 ```console
-uv run --frozen --python 3.12 skillctl validate --config my-config
-uv run --frozen --python 3.12 skillctl plan --json --config my-config
-uv run --frozen --python 3.12 skillctl apply --config my-config
-uv run --frozen --python 3.12 skillctl verify --config my-config
-uv run --frozen --python 3.12 skillctl status --json --config my-config
+uv run skillctl validate --config my-config
+uv run skillctl plan --json --config my-config
+uv run skillctl apply --config my-config
+uv run skillctl verify --config my-config
+uv run skillctl status --json --config my-config
 ```
 
 `apply` does not consume the displayed `plan` output. It recomputes and immediately executes a new plan from the current state.

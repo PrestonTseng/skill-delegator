@@ -211,12 +211,23 @@ def test_lock_cli_wraps_posix_competing_directory_race_as_precise_exit_2(
         yaml.safe_dump(sources, sort_keys=False), encoding="utf-8"
     )
 
-    def compete(staging: Path, destination: Path) -> Path:
-        destination.mkdir()
-        (destination / "corrupt").write_text("wrong", encoding="utf-8")
+    def compete(
+        staging: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        destination: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        assert src_dir_fd is not None
+        assert src_dir_fd == dst_dir_fd
+        cache_destination = (
+            project / "var" / "cache" / "sources" / "example" / os.fsdecode(destination)
+        )
+        cache_destination.mkdir()
+        (cache_destination / "corrupt").write_text("wrong", encoding="utf-8")
         raise OSError(errno.ENOTEMPTY, "competing directory")
 
-    monkeypatch.setattr(source_store.Path, "rename", compete)
+    monkeypatch.setattr(source_store.os, "rename", compete)
 
     assert_before_mutation(project, tmp_path, "lock")
     result = main(["lock", "--config", str(config_dir)])
@@ -244,9 +255,14 @@ def test_lock_cli_hashes_unrelated_non_utf8_entries_without_traceback(tmp_path: 
     )
     source_bytes = os.fsencode(source)
     unrelated = os.path.join(source_bytes, b"unrelated-\xff")
-    with open(unrelated, "wb") as stream:
-        stream.write(b"payload")
-    os.symlink(b"unrelated-\xff", os.path.join(source_bytes, b"link-\xfe"))
+    try:
+        with open(unrelated, "wb") as stream:
+            stream.write(b"payload")
+        os.symlink(b"unrelated-\xff", os.path.join(source_bytes, b"link-\xfe"))
+    except OSError as error:
+        if error.errno == errno.EILSEQ:
+            pytest.skip("filesystem rejects non-UTF8 filename bytes")
+        raise
     sources = yaml.safe_load((config_dir / "sources.yaml").read_text(encoding="utf-8"))
     sources["sources"][0]["location"] = "../source"
     (config_dir / "sources.yaml").write_text(
@@ -271,7 +287,12 @@ def test_lock_cli_rejects_non_utf8_skill_id_with_precise_exit_2(tmp_path: Path) 
     source = project / "source"
     source.mkdir(parents=True)
     skill = os.path.join(os.fsencode(source), b"skill-\xff")
-    os.mkdir(skill)
+    try:
+        os.mkdir(skill)
+    except OSError as error:
+        if error.errno == errno.EILSEQ:
+            pytest.skip("filesystem rejects non-UTF8 filename bytes")
+        raise
     with open(os.path.join(skill, b"SKILL.md"), "wb") as stream:
         stream.write(b"---\nname: runtime\ndescription: Test skill\n---\n")
     sources = yaml.safe_load((config_dir / "sources.yaml").read_text(encoding="utf-8"))

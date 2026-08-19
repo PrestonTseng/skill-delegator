@@ -106,7 +106,12 @@ def test_config_read_retains_ancestor_inodes_and_disables_stale_repository_prove
         descriptor = real_open(path, flags, mode, dir_fd=dir_fd)
         if path == "config" and not fired:
             assert dir_fd is not None
-            assert Path(os.readlink(f"/proc/self/fd/{dir_fd}")) == project
+            parent = os.fstat(dir_fd)
+            expected_parent = project.stat(follow_symlinks=False)
+            assert (parent.st_dev, parent.st_ino) == (
+                expected_parent.st_dev,
+                expected_parent.st_ino,
+            )
             fired = True
             config.rename(moved)
             config.symlink_to(external, target_is_directory=True)

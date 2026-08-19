@@ -8,15 +8,16 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import uuid
 from pathlib import Path
 
-from skill_delegator.errors import SourceError
-from skill_delegator.inventory import (
-    discover_skills,
-    hash_tree,
-    validate_snapshot_tree,
-    validate_source_tree,
+from skill_delegator.descriptor_tree import (
+    copy_tree_into_at,
+    discover_skills_at,
+    hash_tree_at,
+    validate_tree_at,
 )
+from skill_delegator.errors import SourceError
 from skill_delegator.models import AuthorityConfig, ResolvedSkill, ResolvedSource, SourceSpec
 from skill_delegator.safe_paths import (
     AnchoredDirectory,
@@ -29,9 +30,20 @@ _MAX_GIT_ERROR_CHARS = 2000
 _MAX_OS_ERROR_CHARS = 500
 
 
-def _run_git(args: list[str], *, cwd: Path | None = None) -> str:
+def _run_git(args: list[str], *, cwd: Path | None = None, cwd_fd: int | None = None) -> str:
+    if cwd is not None and cwd_fd is not None:
+        raise SourceError("git command received conflicting working directories")
     command = ["git", *args]
     environment = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    preexec_fn = None
+    pass_fds: tuple[int, ...] = ()
+    if cwd_fd is not None:
+
+        def enter_retained_directory() -> None:
+            os.fchdir(cwd_fd)
+
+        preexec_fn = enter_retained_directory
+        pass_fds = (cwd_fd,)
     try:
         result = subprocess.run(
             command,
@@ -41,6 +53,8 @@ def _run_git(args: list[str], *, cwd: Path | None = None) -> str:
             capture_output=True,
             text=True,
             timeout=_GIT_TIMEOUT_SECONDS,
+            pass_fds=pass_fds,
+            preexec_fn=preexec_fn,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise SourceError(f"git command failed: {command[1]}: {error}") from error
@@ -70,12 +84,15 @@ def _existing_cache_entry(cache: AnchoredDirectory, name: str, expected_hash: st
         raise SourceError("content-addressed cache entry must not be a symlink")
     if not stat.S_ISDIR(metadata.st_mode):
         raise SourceError("content-addressed cache entry is corrupt")
-    destination = cache.descriptor_path / name
-    validate_source_tree(destination)
-    if hash_tree(destination) != expected_hash:
-        raise SourceError("content-addressed cache entry is corrupt")
-    cache.verify(description="content-addressed-cache")
-    return True
+    entry_fd = cache.open_existing_child(name, description="content-addressed-cache-entry")
+    try:
+        validate_tree_at(entry_fd, snapshot=True)
+        if hash_tree_at(entry_fd) != expected_hash:
+            raise SourceError("content-addressed cache entry is corrupt")
+        cache.verify_existing_child(name, entry_fd, description="content-addressed-cache-entry")
+        return True
+    finally:
+        os.close(entry_fd)
 
 
 def _source_cache_root(cache_root: Path, source_id: str) -> AnchoredDirectory:
@@ -93,21 +110,34 @@ def _source_cache_root(cache_root: Path, source_id: str) -> AnchoredDirectory:
 
 
 def _cache_snapshot(
-    source_root: Path, cache: AnchoredDirectory, cache_key: str, expected_hash: str
+    source_fd: int, cache: AnchoredDirectory, cache_key: str, expected_hash: str
 ) -> Path:
     if _existing_cache_entry(cache, cache_key, expected_hash):
-        return cache.descriptor_path / cache_key
+        return cache.path / cache_key
     cache.verify(description="content-addressed-cache")
-    staging = Path(tempfile.mkdtemp(prefix=".snapshot-", dir=cache.descriptor_path))
-    destination = cache.descriptor_path / cache_key
+    staging = f".snapshot-{uuid.uuid4().hex}"
+    destination = cache.path / cache_key
+    staging_created = False
     try:
-        shutil.rmtree(staging)
-        shutil.copytree(source_root, staging, symlinks=True, ignore=shutil.ignore_patterns(".git"))
-        validate_source_tree(staging)
-        if hash_tree(staging) != expected_hash:
-            raise SourceError("source changed while its snapshot was being created")
+        os.mkdir(staging, mode=0o700, dir_fd=cache.fd)
+        staging_created = True
+        staging_fd = cache.open_existing_child(staging, description="snapshot-staging")
         try:
-            staging.rename(destination)
+            copy_tree_into_at(source_fd, staging_fd)
+            validate_tree_at(staging_fd, snapshot=True)
+            if hash_tree_at(staging_fd) != expected_hash:
+                raise SourceError("source changed while its snapshot was being created")
+        finally:
+            os.close(staging_fd)
+        cache.verify(description="content-addressed-cache")
+        try:
+            os.rename(
+                staging,
+                cache_key,
+                src_dir_fd=cache.fd,
+                dst_dir_fd=cache.fd,
+            )
+            staging_created = False
         except OSError as error:
             if error.errno not in {errno.EEXIST, errno.ENOTEMPTY}:
                 detail = str(error)[:_MAX_OS_ERROR_CHARS]
@@ -129,12 +159,15 @@ def _cache_snapshot(
         cache.verify(description="content-addressed-cache")
         return destination
     finally:
-        if staging.exists():
-            shutil.rmtree(staging)
+        if staging_created:
+            try:
+                shutil.rmtree(staging, dir_fd=cache.fd)
+            except FileNotFoundError:
+                pass
 
 
-def _resolved_skills(source: SourceSpec, root: Path) -> tuple[ResolvedSkill, ...]:
-    artifacts = discover_skills(root, source.skill_root)
+def _resolved_skills(source: SourceSpec, root_fd: int) -> tuple[ResolvedSkill, ...]:
+    artifacts = discover_skills_at(root_fd, source.skill_root)
     skills: list[ResolvedSkill] = []
     seen: set[str] = set()
     for artifact in artifacts:
@@ -159,16 +192,25 @@ def _resolve_filesystem(source: SourceSpec, cache_root: Path) -> ResolvedSource:
         raise SourceError(f"filesystem source {source.id} location must be a Path")
     retained = open_existing_anchored_directory(source.location, description="filesystem-source")
     try:
-        retained_root = retained.descriptor_path
-        validate_snapshot_tree(retained_root)
-        discover_skills(retained_root, source.skill_root)
-        revision = hash_tree(retained_root)
+        validate_tree_at(retained.fd, snapshot=False)
+        validate_tree_at(retained.fd, snapshot=True)
+        discover_skills_at(retained.fd, source.skill_root)
+        revision = hash_tree_at(retained.fd)
         retained.verify(description="filesystem-source")
         cache = _source_cache_root(cache_root, source.id)
         try:
-            snapshot = _cache_snapshot(retained_root, cache, revision, revision)
+            _cache_snapshot(retained.fd, cache, revision, revision)
             retained.verify(description="filesystem-source")
-            skills = _resolved_skills(source, snapshot)
+            entry_fd = cache.open_existing_child(
+                revision, description="content-addressed-cache-entry"
+            )
+            try:
+                skills = _resolved_skills(source, entry_fd)
+                cache.verify_existing_child(
+                    revision, entry_fd, description="content-addressed-cache-entry"
+                )
+            finally:
+                os.close(entry_fd)
             cache.verify(description="content-addressed-cache")
             retained.verify(description="filesystem-source")
         finally:
@@ -201,7 +243,7 @@ def _tracked_commit_ref(track: str) -> str:
 def _resolve_git(source: SourceSpec, cache_root: Path) -> ResolvedSource:
     if not isinstance(source.location, str) or not source.track:
         raise SourceError(f"git source {source.id} requires string location and tracked ref")
-    temporary = Path(tempfile.mkdtemp(prefix=".git-resolve-"))
+    temporary = Path(tempfile.mkdtemp(prefix=".git-resolve-")).resolve(strict=True)
     checkout = temporary / "checkout"
     try:
         _run_git(["clone", "--quiet", "--no-checkout", "--", source.location, str(checkout)])
@@ -220,17 +262,31 @@ def _resolve_git(source: SourceSpec, cache_root: Path) -> ResolvedSource:
             raise SourceError(f"git source {source.id} did not resolve to a SHA-1 commit")
         _run_git(["checkout", "--quiet", "--detach", revision], cwd=checkout)
         shutil.rmtree(checkout / ".git")
-        # Validate the entire checkout before publishing any source-controlled links.
-        validate_snapshot_tree(checkout)
-        discover_skills(checkout, source.skill_root)
-        tree_hash = hash_tree(checkout)
-        cache = _source_cache_root(cache_root, source.id)
+        retained = open_existing_anchored_directory(checkout, description="git-checkout")
         try:
-            snapshot = _cache_snapshot(checkout, cache, revision, tree_hash)
-            skills = _resolved_skills(source, snapshot)
-            cache.verify(description="content-addressed-cache")
+            # Validate the entire checkout before publishing any source-controlled links.
+            validate_tree_at(retained.fd, snapshot=False)
+            validate_tree_at(retained.fd, snapshot=True)
+            discover_skills_at(retained.fd, source.skill_root)
+            tree_hash = hash_tree_at(retained.fd)
+            cache = _source_cache_root(cache_root, source.id)
+            try:
+                _cache_snapshot(retained.fd, cache, revision, tree_hash)
+                entry_fd = cache.open_existing_child(
+                    revision, description="content-addressed-cache-entry"
+                )
+                try:
+                    skills = _resolved_skills(source, entry_fd)
+                    cache.verify_existing_child(
+                        revision, entry_fd, description="content-addressed-cache-entry"
+                    )
+                finally:
+                    os.close(entry_fd)
+                cache.verify(description="content-addressed-cache")
+            finally:
+                cache.close()
         finally:
-            cache.close()
+            retained.close()
         return ResolvedSource(
             source_id=source.id,
             source_type=source.type,
