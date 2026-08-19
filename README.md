@@ -264,7 +264,6 @@ Do not commit generated caches, targets, transaction data, or receipts as config
 - [Architecture](docs/architecture.md)
 - [Source update workflow](docs/update-workflow.md)
 - [Threat model and security limits](docs/threat-model.md)
-- [Safe example notes](config/README.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 

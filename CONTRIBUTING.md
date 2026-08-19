@@ -32,7 +32,7 @@ Review the complete diff before you submit a change.
 
 If you change behavior, add a focused test that fails without the change.
 
-If you change the safe example, update the exact hash guard. Follow [the safe example procedure](config/README.md#update-the-safe-example).
+Authority branches use `fixture_policy: none` and must not run generic tests directly. Generic engine tests use the checked-in safe example from `main`; see the [configuration reference](docs/configuration.md).
 
 ## Pull Requests
 
