@@ -45,12 +45,14 @@ jobs:
           python-version: "3.12"
       - name: Install locked dependencies
         run: uv sync --locked --python 3.12
-      - name: Run portable platform and source tests
-        run: >-
-          uv run --frozen --python 3.12 pytest -q
-          tests/unit/test_platform_contract.py
-          tests/unit/test_descriptor_tree.py
-          tests/integration/test_lock_cli.py
+      - name: Run the full test suite on macOS
+        run: uv run --frozen --python 3.12 pytest -q
+      - name: Check formatting on macOS
+        run: uv run --frozen --python 3.12 ruff format --check .
+      - name: Run Ruff on macOS
+        run: uv run --frozen --python 3.12 ruff check .
+      - name: Compile Python files on macOS
+        run: uv run --frozen --python 3.12 python -m compileall -q src tests
       - name: Run the native macOS safe-example workflow
         shell: bash
         run: |

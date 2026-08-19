@@ -78,6 +78,25 @@ class AnchoredDirectory:
                 os.close(descriptor)
             raise
 
+    def verify_existing_child(self, name: str, descriptor: int, *, description: str) -> None:
+        """Verify a direct child name still identifies its retained descriptor."""
+
+        if Path(name).parts != (name,) or name in {"", ".", ".."}:
+            raise SourceError(f"{description}-invalid-name")
+        try:
+            self.verify(description=description)
+            opened = os.fstat(descriptor)
+            lexical = os.stat(name, dir_fd=self.fd, follow_symlinks=False)
+            if (
+                not stat.S_ISDIR(opened.st_mode)
+                or not stat.S_ISDIR(lexical.st_mode)
+                or (opened.st_dev, opened.st_ino) != (lexical.st_dev, lexical.st_ino)
+            ):
+                raise OSError("child directory identity changed")
+            self.verify(description=description)
+        except OSError as error:
+            raise SourceError(f"{description}-identity-changed") from error
+
     def verify(self, *, description: str) -> None:
         """Verify every retained pathname edge still names its opened directory."""
 

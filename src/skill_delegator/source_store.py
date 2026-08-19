@@ -76,7 +76,7 @@ def _existing_cache_entry(cache: AnchoredDirectory, name: str, expected_hash: st
         validate_tree_at(entry_fd, snapshot=True)
         if hash_tree_at(entry_fd) != expected_hash:
             raise SourceError("content-addressed cache entry is corrupt")
-        cache.verify(description="content-addressed-cache")
+        cache.verify_existing_child(name, entry_fd, description="content-addressed-cache-entry")
         return True
     finally:
         os.close(entry_fd)
@@ -193,6 +193,9 @@ def _resolve_filesystem(source: SourceSpec, cache_root: Path) -> ResolvedSource:
             )
             try:
                 skills = _resolved_skills(source, entry_fd)
+                cache.verify_existing_child(
+                    revision, entry_fd, description="content-addressed-cache-entry"
+                )
             finally:
                 os.close(entry_fd)
             cache.verify(description="content-addressed-cache")
@@ -261,6 +264,9 @@ def _resolve_git(source: SourceSpec, cache_root: Path) -> ResolvedSource:
                 )
                 try:
                     skills = _resolved_skills(source, entry_fd)
+                    cache.verify_existing_child(
+                        revision, entry_fd, description="content-addressed-cache-entry"
+                    )
                 finally:
                     os.close(entry_fd)
                 cache.verify(description="content-addressed-cache")

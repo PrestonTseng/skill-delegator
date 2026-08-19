@@ -175,6 +175,39 @@ def test_cache_path_swap_never_writes_outside_retained_inode_and_cleans_staging(
     assert tuple(retained_cache.iterdir()) == ()
 
 
+def test_existing_cache_entry_replacement_during_hash_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root = tmp_path / "source"
+    write_skill(source_root, "one")
+    cache_root = tmp_path / "cache"
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("."), None)
+    first = resolve_sources(config_for(source), cache_root)[0]
+    lexical_entry = first.root
+    retained_entry = tmp_path / "retained-entry"
+    real_hash = source_store.hash_tree_at
+    calls = 0
+
+    def swap_after_hash(root_fd: int) -> str:
+        nonlocal calls
+        calls += 1
+        digest = real_hash(root_fd)
+        if calls == 2:
+            lexical_entry.rename(retained_entry)
+            lexical_entry.mkdir()
+            (lexical_entry / "CORRUPT").write_text("hostile", encoding="utf-8")
+        return digest
+
+    monkeypatch.setattr(source_store, "hash_tree_at", swap_after_hash)
+
+    with pytest.raises(SourceError, match="content-addressed-cache-entry-identity-changed"):
+        resolve_sources(config_for(source), cache_root)
+
+    assert calls >= 2
+    assert tuple(path.name for path in lexical_entry.iterdir()) == ("CORRUPT",)
+    assert (retained_entry / "one" / "SKILL.md").is_file()
+
+
 @pytest.mark.parametrize(
     "track",
     ("feature", "refs/heads/feature", "refs/remotes/origin/feature", "refs/tags/v1"),

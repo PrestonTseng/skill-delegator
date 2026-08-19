@@ -61,7 +61,25 @@ def test_existing_cache_child_is_opened_relative_to_retained_parent(tmp_path: Pa
     with open_anchored_directory(parent, description="test-cache") as anchored:
         descriptor = anchored.open_existing_child("revision", description="cache-entry")
         try:
-            assert Path(f"/proc/self/fd/{descriptor}").samefile(child)
+            opened = os.fstat(descriptor)
+            lexical = child.stat(follow_symlinks=False)
+            assert (opened.st_dev, opened.st_ino) == (lexical.st_dev, lexical.st_ino)
+        finally:
+            os.close(descriptor)
+
+
+def test_existing_cache_child_replacement_is_detected_after_validation(tmp_path: Path) -> None:
+    parent = tmp_path / "cache"
+    child = parent / "revision"
+    child.mkdir(parents=True)
+
+    with open_anchored_directory(parent, description="test-cache") as anchored:
+        descriptor = anchored.open_existing_child("revision", description="cache-entry")
+        try:
+            child.rename(parent / "retained-revision")
+            child.mkdir()
+            with pytest.raises(SourceError, match="cache-entry-identity-changed"):
+                anchored.verify_existing_child("revision", descriptor, description="cache-entry")
         finally:
             os.close(descriptor)
 
