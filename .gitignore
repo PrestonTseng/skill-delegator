@@ -8,3 +8,4 @@ dist/
 /var/cache/
 /var/example-targets/
 /var/receipts/
+.DS_Store
