@@ -22,11 +22,11 @@ Use `skill-delegator` when you need these controls:
 ## Requirements
 
 - Python 3.12 or later
-- Linux
+- Linux or macOS
 - Git
 - [uv](https://docs.astral.sh/uv/)
 
-V1 requires Linux. It uses `fcntl`, descriptor-relative file operations, and `/proc` descriptor paths.
+The engine uses POSIX advisory locking, descriptor-relative filesystem operations, and inode verification. Native Windows is not currently supported.
 
 ## Quick Start
 
