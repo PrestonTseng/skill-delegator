@@ -377,8 +377,8 @@ def test_cache_race_accepts_concurrent_matching_real_directory(
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
     ) -> None:
-        assert src_dir_fd is None
-        assert dst_dir_fd is not None
+        assert src_dir_fd is not None
+        assert src_dir_fd == dst_dir_fd
         cache_destination = tmp_path / "cache" / "local" / os.fsdecode(destination)
         shutil.copytree(source_root, cache_destination, symlinks=True)
         raise OSError(race_errno, "competing directory")
@@ -405,8 +405,8 @@ def test_cache_race_wraps_concurrent_corrupt_directory_and_cleans_staging(
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
     ) -> None:
-        assert src_dir_fd is None
-        assert dst_dir_fd is not None
+        assert src_dir_fd is not None
+        assert src_dir_fd == dst_dir_fd
         cache_destination = tmp_path / "cache" / "local" / os.fsdecode(destination)
         cache_destination.mkdir()
         (cache_destination / "corrupt").write_text("wrong", encoding="utf-8")

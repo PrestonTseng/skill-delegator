@@ -218,8 +218,8 @@ def test_lock_cli_wraps_posix_competing_directory_race_as_precise_exit_2(
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
     ) -> None:
-        assert src_dir_fd is None
-        assert dst_dir_fd is not None
+        assert src_dir_fd is not None
+        assert src_dir_fd == dst_dir_fd
         cache_destination = (
             project / "var" / "cache" / "sources" / "example" / os.fsdecode(destination)
         )

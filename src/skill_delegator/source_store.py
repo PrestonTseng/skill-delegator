@@ -8,10 +8,11 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import uuid
 from pathlib import Path
 
 from skill_delegator.descriptor_tree import (
-    copy_tree_at,
+    copy_tree_into_at,
     discover_skills_at,
     hash_tree_at,
     validate_tree_at,
@@ -101,21 +102,29 @@ def _cache_snapshot(
     if _existing_cache_entry(cache, cache_key, expected_hash):
         return cache.path / cache_key
     cache.verify(description="content-addressed-cache")
-    staging_parent = Path(tempfile.mkdtemp(prefix="skill-delegator-snapshot-"))
-    staging = staging_parent / "snapshot"
+    staging = f".snapshot-{uuid.uuid4().hex}"
     destination = cache.path / cache_key
+    staging_created = False
     try:
-        copy_tree_at(source_fd, staging)
-        staged = open_existing_anchored_directory(staging, description="snapshot-staging")
+        os.mkdir(staging, mode=0o700, dir_fd=cache.fd)
+        staging_created = True
+        staging_fd = cache.open_existing_child(staging, description="snapshot-staging")
         try:
-            validate_tree_at(staged.fd, snapshot=True)
-            if hash_tree_at(staged.fd) != expected_hash:
+            copy_tree_into_at(source_fd, staging_fd)
+            validate_tree_at(staging_fd, snapshot=True)
+            if hash_tree_at(staging_fd) != expected_hash:
                 raise SourceError("source changed while its snapshot was being created")
         finally:
-            staged.close()
+            os.close(staging_fd)
         cache.verify(description="content-addressed-cache")
         try:
-            os.rename(staging, cache_key, dst_dir_fd=cache.fd)
+            os.rename(
+                staging,
+                cache_key,
+                src_dir_fd=cache.fd,
+                dst_dir_fd=cache.fd,
+            )
+            staging_created = False
         except OSError as error:
             if error.errno not in {errno.EEXIST, errno.ENOTEMPTY}:
                 detail = str(error)[:_MAX_OS_ERROR_CHARS]
@@ -137,7 +146,11 @@ def _cache_snapshot(
         cache.verify(description="content-addressed-cache")
         return destination
     finally:
-        shutil.rmtree(staging_parent, ignore_errors=True)
+        if staging_created:
+            try:
+                shutil.rmtree(staging, dir_fd=cache.fd)
+            except FileNotFoundError:
+                pass
 
 
 def _resolved_skills(source: SourceSpec, root_fd: int) -> tuple[ResolvedSkill, ...]:

@@ -8,6 +8,7 @@ import pytest
 
 from skill_delegator.descriptor_tree import (
     copy_tree_at,
+    copy_tree_into_at,
     discover_skills_at,
     hash_tree_at,
     validate_tree_at,
@@ -121,6 +122,27 @@ def test_copy_tree_at_preserves_hash_modes_and_links_but_excludes_git(tmp_path: 
 
     assert hash_tree(destination) == hash_tree(source)
     assert stat.S_IMODE((destination / "skills/group/demo/run.sh").stat().st_mode) == 0o755
+    assert os.readlink(destination / "skills/group/demo/manifest-link") == "SKILL.md"
+    assert not (destination / ".git").exists()
+
+
+def test_copy_tree_into_at_populates_precreated_destination(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    _write_parity_tree(source)
+    destination = tmp_path / "copy"
+    destination.mkdir(mode=0o700)
+    source_fd = _open_directory(source)
+    destination_fd = _open_directory(destination)
+    try:
+        copy_tree_into_at(source_fd, destination_fd)
+        validate_tree_at(destination_fd, snapshot=True)
+        assert hash_tree_at(destination_fd) == hash_tree(source)
+    finally:
+        os.close(destination_fd)
+        os.close(source_fd)
+
+    assert hash_tree(destination) == hash_tree(source)
     assert os.readlink(destination / "skills/group/demo/manifest-link") == "SKILL.md"
     assert not (destination / ".git").exists()
 

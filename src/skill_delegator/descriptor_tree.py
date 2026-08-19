@@ -36,10 +36,17 @@ def _display(path: bytes) -> str:
 
 
 def _names_at(directory_fd: int) -> list[bytes]:
+    scan_fd = -1
     try:
-        names = [os.fsencode(name) for name in os.listdir(directory_fd)]
+        # Reopen the retained directory so enumeration never depends on a caller's
+        # shared directory-stream offset (which dir_fd mutations can advance).
+        scan_fd = os.open(".", _OPEN_DIRECTORY, dir_fd=directory_fd)
+        names = [os.fsencode(name) for name in os.listdir(scan_fd)]
     except OSError as error:
         raise SourceError(f"cannot list source directory: {error}") from error
+    finally:
+        if scan_fd >= 0:
+            os.close(scan_fd)
     return sorted(name for name in names if name != b".git")
 
 
@@ -318,49 +325,53 @@ def _write_all(file_fd: int, payload: bytes, path: bytes) -> None:
         raise SourceError(f"cannot copy source file {_display(path)}: {error}") from error
 
 
+def copy_tree_into_at(source_fd: int, destination_fd: int) -> None:
+    """Copy a retained source tree into an existing empty retained directory."""
+
+    entries = sorted(_walk_at(source_fd), key=lambda entry: entry.path)
+    directories: list[_TreeEntry] = []
+    for entry in entries:
+        try:
+            if entry.kind == b"D":
+                os.mkdir(entry.path, mode=0o700, dir_fd=destination_fd)
+                directories.append(entry)
+            elif entry.kind == b"L":
+                os.symlink(entry.payload, entry.path, dir_fd=destination_fd)
+            else:
+                flags = (
+                    os.O_WRONLY
+                    | os.O_CREAT
+                    | os.O_EXCL
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0)
+                )
+                file_fd = os.open(entry.path, flags, mode=0o600, dir_fd=destination_fd)
+                try:
+                    _write_all(file_fd, entry.payload, entry.path)
+                    os.fchmod(file_fd, entry.mode)
+                finally:
+                    os.close(file_fd)
+        except SourceError:
+            raise
+        except OSError as error:
+            raise SourceError(f"cannot copy source path {_display(entry.path)}: {error}") from error
+    for entry in reversed(directories):
+        directory_fd = os.open(entry.path, _OPEN_DIRECTORY, dir_fd=destination_fd)
+        try:
+            os.fchmod(directory_fd, entry.mode)
+        finally:
+            os.close(directory_fd)
+
+
 def copy_tree_at(source_fd: int, destination: Path) -> None:
     """Copy a retained source tree into a new private destination."""
 
-    entries = sorted(_walk_at(source_fd), key=lambda entry: entry.path)
     try:
         destination.mkdir(mode=0o700)
         destination_fd = os.open(destination, _OPEN_DIRECTORY)
     except OSError as error:
         raise SourceError(f"cannot create snapshot destination {destination}: {error}") from error
     try:
-        directories: list[_TreeEntry] = []
-        for entry in entries:
-            try:
-                if entry.kind == b"D":
-                    os.mkdir(entry.path, mode=0o700, dir_fd=destination_fd)
-                    directories.append(entry)
-                elif entry.kind == b"L":
-                    os.symlink(entry.payload, entry.path, dir_fd=destination_fd)
-                else:
-                    flags = (
-                        os.O_WRONLY
-                        | os.O_CREAT
-                        | os.O_EXCL
-                        | getattr(os, "O_CLOEXEC", 0)
-                        | getattr(os, "O_NOFOLLOW", 0)
-                    )
-                    file_fd = os.open(entry.path, flags, mode=0o600, dir_fd=destination_fd)
-                    try:
-                        _write_all(file_fd, entry.payload, entry.path)
-                        os.fchmod(file_fd, entry.mode)
-                    finally:
-                        os.close(file_fd)
-            except SourceError:
-                raise
-            except OSError as error:
-                raise SourceError(
-                    f"cannot copy source path {_display(entry.path)}: {error}"
-                ) from error
-        for entry in reversed(directories):
-            directory_fd = os.open(entry.path, _OPEN_DIRECTORY, dir_fd=destination_fd)
-            try:
-                os.fchmod(directory_fd, entry.mode)
-            finally:
-                os.close(directory_fd)
+        copy_tree_into_at(source_fd, destination_fd)
     finally:
         os.close(destination_fd)
