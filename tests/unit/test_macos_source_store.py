@@ -36,9 +36,7 @@ def test_filesystem_lock_never_requires_descriptor_pseudo_path(
 ) -> None:
     source_root = tmp_path / "source"
     _write_skill(source_root)
-    source = SourceSpec(
-        "local", "filesystem", source_root, PurePosixPath("skills"), None
-    )
+    source = SourceSpec("local", "filesystem", source_root, PurePosixPath("skills"), None)
 
     def forbidden_descriptor_path(_self: AnchoredDirectory) -> Path:
         raise AssertionError("security-sensitive traversal must use dir_fd operations")

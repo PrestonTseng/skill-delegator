@@ -96,7 +96,9 @@ def _walk_at(directory_fd: int, prefix: bytes = b"") -> list[_TreeEntry]:
                 target = os.readlink(name, dir_fd=directory_fd)
                 after = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
             except OSError as error:
-                raise SourceError(f"cannot read source symlink {_display(path)}: {error}") from error
+                raise SourceError(
+                    f"cannot read source symlink {_display(path)}: {error}"
+                ) from error
             if not _same_identity(metadata, after):
                 raise SourceError(f"source mutated during traversal: {_display(path)}")
             entries.append(
@@ -106,14 +108,14 @@ def _walk_at(directory_fd: int, prefix: bytes = b"") -> list[_TreeEntry]:
             try:
                 child_fd = os.open(name, _OPEN_DIRECTORY, dir_fd=directory_fd)
             except OSError as error:
-                raise SourceError(f"cannot open source directory {_display(path)}: {error}") from error
+                raise SourceError(
+                    f"cannot open source directory {_display(path)}: {error}"
+                ) from error
             try:
                 opened = os.fstat(child_fd)
                 if not stat.S_ISDIR(opened.st_mode) or not _same_identity(metadata, opened):
                     raise SourceError(f"source mutated during traversal: {_display(path)}")
-                entries.append(
-                    _TreeEntry(path, mode, b"D", b"", metadata.st_dev, metadata.st_ino)
-                )
+                entries.append(_TreeEntry(path, mode, b"D", b"", metadata.st_dev, metadata.st_ino))
                 entries.extend(_walk_at(child_fd, path))
                 if not _same_identity(opened, os.fstat(child_fd)):
                     raise SourceError(f"source mutated during traversal: {_display(path)}")
@@ -121,9 +123,7 @@ def _walk_at(directory_fd: int, prefix: bytes = b"") -> list[_TreeEntry]:
                 os.close(child_fd)
         elif stat.S_ISREG(metadata.st_mode):
             payload = _read_file_at(directory_fd, name, metadata, path)
-            entries.append(
-                _TreeEntry(path, mode, b"F", payload, metadata.st_dev, metadata.st_ino)
-            )
+            entries.append(_TreeEntry(path, mode, b"F", payload, metadata.st_dev, metadata.st_ino))
         else:
             raise SourceError(f"unsupported special file in source: {_display(path)}")
     if _names_at(directory_fd) != before_names:
@@ -194,9 +194,7 @@ def _validate_symlink(
                     f"symlink escape from copied snapshot root: {os.fsdecode(entry.path)!r}"
                 )
             if not _absolute_target_is_internal(entry.payload, entries, root_identity):
-                raise SourceError(
-                    f"symlink escape from source root: {os.fsdecode(entry.path)!r}"
-                )
+                raise SourceError(f"symlink escape from source root: {os.fsdecode(entry.path)!r}")
             return
         target = _normalise_target(tuple(resolved[:-1]), entry.payload)
         resolved = []
@@ -248,9 +246,7 @@ def _is_below(path: tuple[bytes, ...], root: tuple[bytes, ...]) -> bool:
     return len(path) > len(root) and path[: len(root)] == root
 
 
-def discover_skills_at(
-    root_fd: int, skill_root: PurePosixPath
-) -> tuple[SkillArtifact, ...]:
+def discover_skills_at(root_fd: int, skill_root: PurePosixPath) -> tuple[SkillArtifact, ...]:
     """Discover skill artifacts below ``skill_root`` from a retained descriptor."""
 
     _validate_relative_root(skill_root)
@@ -357,7 +353,9 @@ def copy_tree_at(source_fd: int, destination: Path) -> None:
             except SourceError:
                 raise
             except OSError as error:
-                raise SourceError(f"cannot copy source path {_display(entry.path)}: {error}") from error
+                raise SourceError(
+                    f"cannot copy source path {_display(entry.path)}: {error}"
+                ) from error
         for entry in reversed(directories):
             directory_fd = os.open(entry.path, _OPEN_DIRECTORY, dir_fd=destination_fd)
             try:

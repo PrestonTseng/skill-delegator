@@ -369,6 +369,7 @@ def test_cache_race_accepts_concurrent_matching_real_directory(
     source_root = tmp_path / "source"
     write_skill(source_root, "skills/one")
     source = SourceSpec("local", "filesystem", source_root, PurePosixPath("skills"), None)
+
     def compete(
         staging: str | bytes | os.PathLike[str] | os.PathLike[bytes],
         destination: str | bytes | os.PathLike[str] | os.PathLike[bytes],

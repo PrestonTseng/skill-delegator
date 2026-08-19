@@ -108,7 +108,9 @@ def validate_snapshot_tree(source_root: Path) -> Path:
 def _parse_frontmatter(text: str, display_path: str) -> tuple[str, str]:
     lines = text.splitlines()
     if not lines or lines[0] != "---":
-        raise SourceError(f"{display_path}: invalid SKILL.md frontmatter: missing opening delimiter")
+        raise SourceError(
+            f"{display_path}: invalid SKILL.md frontmatter: missing opening delimiter"
+        )
     try:
         end = lines.index("---", 1)
     except ValueError as error:
