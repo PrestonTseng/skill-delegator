@@ -1,10 +1,560 @@
 schema_version: 1
 sources:
-- source_id: example
-  type: filesystem
-  tree_hash: c61f839e88b0e993f7b89f17de0536eaa90fa22c6646c00086b40c6abbcdb78f
+- source_id: anthropic
+  type: git
+  resolved_commit: 0a64e398ec6bb34a494f0c347e8ccae53a862f8e
+  tree_hash: 8feced0b0c9209b4ef236ee931a74093e5dd38fb4c182cdca5e6c4f8e41be0a8
   skills:
-  - canonical_id: example/hello
-    runtime_name: hello
-    path: hello
-    sha256: d38c385a71ef3a3ef674f7b6e2d5d9713b1faa27f1a30f14738ad49aadd512ec
+  - canonical_id: anthropic/academy-guide
+    runtime_name: academy-guide
+    path: skills/academy-guide
+    sha256: 067d4b636e590fec996f08c904199d71532bc542f04ec5c86157f7ad158a0ed6
+  - canonical_id: anthropic/algorithmic-art
+    runtime_name: algorithmic-art
+    path: skills/algorithmic-art
+    sha256: b6a13802baedaa83a6217c25ec89ab77b0c07e629e9ffdd14aa8d25693921650
+  - canonical_id: anthropic/brand-guidelines
+    runtime_name: brand-guidelines
+    path: skills/brand-guidelines
+    sha256: aa857dc05ae3b328137bc7c53bcd650403aa53f37e3a3df47c4b79181ec437bb
+  - canonical_id: anthropic/canvas-design
+    runtime_name: canvas-design
+    path: skills/canvas-design
+    sha256: 780d837740ac1e5b9ab23914ee258df71ed9a226af83ad116814c62d4e7181f4
+  - canonical_id: anthropic/claude-api
+    runtime_name: claude-api
+    path: skills/claude-api
+    sha256: 2397098782bbcca54c12e85bafc1c556f1ca1d5f0808e75b738820d84302e763
+  - canonical_id: anthropic/discernment-nudge
+    runtime_name: discernment-nudge
+    path: skills/discernment-nudge
+    sha256: c49fc17552514549abfdf821e496be33370306369c4d90b824ae0a51f64d2c28
+  - canonical_id: anthropic/doc-coauthoring
+    runtime_name: doc-coauthoring
+    path: skills/doc-coauthoring
+    sha256: ec154313dbcba4492768a0fa2b742fbd92164cd7192c3c828e138f7eb8735b3c
+  - canonical_id: anthropic/docx
+    runtime_name: docx
+    path: skills/docx
+    sha256: 5eb80452f417b52136d45da19b2c246cdb8297d8c928dfb25cb903036b97ff6b
+  - canonical_id: anthropic/frontend-design
+    runtime_name: frontend-design
+    path: skills/frontend-design
+    sha256: ddfe8c964dac37a4cbcabb36da3855fd318370bcc2dfdac66f6da0e99d6901af
+  - canonical_id: anthropic/internal-comms
+    runtime_name: internal-comms
+    path: skills/internal-comms
+    sha256: 464460927d98ca1f575c3e40e1a3178d541e2f0ceeb7e9902d83140a94ee026b
+  - canonical_id: anthropic/mcp-builder
+    runtime_name: mcp-builder
+    path: skills/mcp-builder
+    sha256: cb9bee51c4dc76c4c1464d6826e5660ad9c10743c2d526fd599909a0677288d6
+  - canonical_id: anthropic/pdf
+    runtime_name: pdf
+    path: skills/pdf
+    sha256: fc6c27b2f2ad87d550c859b9aabcc9fcc38b74e8bf0099237ef51f47adffc42e
+  - canonical_id: anthropic/pptx
+    runtime_name: pptx
+    path: skills/pptx
+    sha256: 0701aa1d34a5da9f3e6be46af82a4ef4c512b0a2290085cfa52ed50b1db22c2e
+  - canonical_id: anthropic/skill-creator
+    runtime_name: skill-creator
+    path: skills/skill-creator
+    sha256: ada58b00f42dcf0a551f721bd2dcad9573b980109b406753ad10b383adc079d9
+  - canonical_id: anthropic/slack-gif-creator
+    runtime_name: slack-gif-creator
+    path: skills/slack-gif-creator
+    sha256: 5ddcac03e6be759650ee9ab8fc9e873f96c60b77cf86b3ac9c21099c420b836f
+  - canonical_id: anthropic/theme-factory
+    runtime_name: theme-factory
+    path: skills/theme-factory
+    sha256: 09e97f14042a8987ced3c57b62660c55bbaf505b15d0631bb843be858545a496
+  - canonical_id: anthropic/web-artifacts-builder
+    runtime_name: web-artifacts-builder
+    path: skills/web-artifacts-builder
+    sha256: a7b9b634d535a01e9fd8ff453255b253085305e186876d0bb953ca1b410843d4
+  - canonical_id: anthropic/webapp-testing
+    runtime_name: webapp-testing
+    path: skills/webapp-testing
+    sha256: 09ad05b27363333cebe8d39721d4a618f97c37cd93b094a478bd30fe8ddb53b0
+  - canonical_id: anthropic/xlsx
+    runtime_name: xlsx
+    path: skills/xlsx
+    sha256: febb3020b49a0a71f4bfc9d9ba6a37bcfdf0615eeb3796dab89cfb55adcdfc74
+- source_id: claude-video
+  type: git
+  resolved_commit: 83da59fa78c3eee9e20f515fe75c438bb5166efd
+  tree_hash: 050a01aedde39731ab42501a8bf8e8b4bccf0312c4086042fb5234ea362edbbb
+  skills:
+  - canonical_id: claude-video/watch
+    runtime_name: watch
+    path: skills/watch
+    sha256: 8ffb5f0a34797ff88cc8fa1a596420299548b33be49d3e5105a66cf7c0eefdf3
+- source_id: humanizer-zh-tw
+  type: filesystem
+  tree_hash: db6f0642a6855d3e791119eaa8f56dd411f5edeb50a2dc5c7e89d1059b7092f9
+  skills:
+  - canonical_id: humanizer-zh-tw/humanizer-zh-tw
+    runtime_name: humanizer-zh-tw
+    path: humanizer-zh-tw
+    sha256: a450d2748b03b806ee99887dd128b403dd6dc173d00755a8b7ab3bd22b08b51a
+- source_id: lileesystems
+  type: filesystem
+  tree_hash: 5b1576830b044425783116c0220091ca2e339b373a029dca876ca3e800ace52e
+  skills:
+  - canonical_id: lileesystems/jira-ticket-writer
+    runtime_name: jira-ticket-writer
+    path: jira-ticket-writer
+    sha256: 447da5471f29a3a7d496ad8fe1b0c908bbfba72e4879df5cf33942eaff9c84aa
+  - canonical_id: lileesystems/lilee-candidate-tracking-page
+    runtime_name: lilee-candidate-tracking-page
+    path: lilee-candidate-tracking-page
+    sha256: b021df2d6e3a82f122911aad05d3a923c149ee68363a991f8fec1c4b90fe8f35
+  - canonical_id: lileesystems/lilee-confluence-adf-authoring
+    runtime_name: lilee-confluence-adf-authoring
+    path: lilee-confluence-adf-authoring
+    sha256: 8268c102a7da02e5c03a3cc8d1ad77291b93cc605eba73747da82e0d432aac20
+  - canonical_id: lileesystems/lilee-delivery-map-authoring
+    runtime_name: lilee-delivery-map-authoring
+    path: lilee-delivery-map-authoring
+    sha256: 73c1d75807afa6e150118d9b4f291a6ecdfe8302d9791217fd378677757881a4
+  - canonical_id: lileesystems/lilee-kpi-roadmap-maintenance
+    runtime_name: lilee-kpi-roadmap-maintenance
+    path: lilee-kpi-roadmap-maintenance
+    sha256: 058f75d0ffa60630dbc61c9980ecc36439e194d52458b17d5ba86e2bf07fb2eb
+  - canonical_id: lileesystems/lilee-kpi-spreadsheet-review
+    runtime_name: lilee-kpi-spreadsheet-review
+    path: lilee-kpi-spreadsheet-review
+    sha256: b6243bf7c5693294e32e44177f960c90efabdd32a67e3b46bb8ee86874d40b2d
+  - canonical_id: lileesystems/lilee-presentation-template
+    runtime_name: lilee-presentation-template
+    path: lilee-presentation-template
+    sha256: e3b929d6bb24c315de6b150f2428ad4bf327c0f63296645851f398884174ae32
+  - canonical_id: lileesystems/lilee-spec-backlog-authoring
+    runtime_name: lilee-spec-backlog-authoring
+    path: lilee-spec-backlog-authoring
+    sha256: 30f8134625b93a2c438f8f1d22b043caf9db69f45e270462283a0eabefb735b4
+  - canonical_id: lileesystems/realtime-trackmap-rca
+    runtime_name: realtime-trackmap-rca
+    path: realtime-trackmap-rca
+    sha256: e45bbe39d554f5af4b29b4f9fad8c0bc19331610023349344224ae1df1d7cfb3
+  - canonical_id: lileesystems/release-evidence-and-qa-reporting
+    runtime_name: release-evidence-and-qa-reporting
+    path: release-evidence-and-qa-reporting
+    sha256: dd4a879ce59b3d4428f2d7d5724e144457bfd0d87a8d6ada2a48b0047f7de18d
+  - canonical_id: lileesystems/safeart-deployment-changelog
+    runtime_name: safeart-deployment-changelog
+    path: safeart-deployment-changelog
+    sha256: 837419288a1ea26462ddeeca50d07cbbcde68b11d23eb210f06d88ed2520fe74
+  - canonical_id: lileesystems/safeart-incident-rca
+    runtime_name: safeart-incident-rca
+    path: safeart-incident-rca
+    sha256: 627c5f7b23799294dd8a7ad9b8e02c17a8b13f2ca96253bc93752a956d2770ab
+  - canonical_id: lileesystems/safeart-release-note-authoring
+    runtime_name: safeart-release-note-authoring
+    path: safeart-release-note-authoring
+    sha256: 08fa9c99c57babaec6beb902692acdfb54254ef4f86b9ecb0644ac099f243310
+  - canonical_id: lileesystems/tapas-icd-doc-maintenance
+    runtime_name: tapas-icd-doc-maintenance
+    path: tapas-icd-doc-maintenance
+    sha256: 18ab6a8a29e60bce7e17d5acba97c3647a26d3e73a01db54da8d1f584f032197
+  - canonical_id: lileesystems/tapas-knowledge
+    runtime_name: tapas-knowledge
+    path: tapas-knowledge
+    sha256: fff915320114098de4b9b2f88257d3fcd084ee6857e9aeb553238402e04d6dde
+  - canonical_id: lileesystems/tapas-redesign-architecture
+    runtime_name: tapas-redesign-architecture
+    path: tapas-redesign-architecture
+    sha256: e95ba4ccbcf7595e43220de394503fe49c87b4b8ec338f556f519b703a5f7fe0
+  - canonical_id: lileesystems/tapas-testbed-development
+    runtime_name: tapas-testbed-development
+    path: tapas-testbed-development
+    sha256: 68574bf0a468bdab0f6803184ebb4a0cd02feaef212b07701047e8abce925ddc
+  - canonical_id: lileesystems/tapas/lilee-candidate-review
+    runtime_name: lilee-candidate-review
+    path: tapas/lilee-candidate-review
+    sha256: e5d580de92820395219ba33157a98fd3d50af7fb1257dd7001d30c847f08b67a
+  - canonical_id: lileesystems/thalos-movement-rca
+    runtime_name: thalos-movement-rca
+    path: thalos-movement-rca
+    sha256: 0d5a004f7b5ad573cbb578138abfa13dac7bb00ec8000123457bce0f0f3eaf9a
+  - canonical_id: lileesystems/thalos-nibble-authority-development
+    runtime_name: thalos-nibble-authority-development
+    path: thalos-nibble-authority-development
+    sha256: ba1d1b26a21329ad0bda1a2e250e17eadfd0e93be9388fa3b45aff1431ca9062
+- source_id: mattpocock
+  type: git
+  resolved_commit: 885e2ca4d842d139e9aef4e48d366c63cb1b8013
+  tree_hash: 9d8be0a6a4451f42406b2bfed7a4e36cb7d50273ded9f9cce7ef5a78df0d27cd
+  skills:
+  - canonical_id: mattpocock/engineering/ask-matt
+    runtime_name: ask-matt
+    path: skills/engineering/ask-matt
+    sha256: 399771189075accf58a976da9d5cda6806699bf2e5261fc42c2fc06d3bfc6036
+  - canonical_id: mattpocock/engineering/code-review
+    runtime_name: code-review
+    path: skills/engineering/code-review
+    sha256: ad9cf89fa038c12d5d2c644830ee5fef52f8a8ad046df4c64ca632ff5e236cc0
+  - canonical_id: mattpocock/engineering/codebase-design
+    runtime_name: codebase-design
+    path: skills/engineering/codebase-design
+    sha256: c05545e5354e635f60d03eb298e386529453034e0f7767fde305289da0b7c5f2
+  - canonical_id: mattpocock/engineering/diagnosing-bugs
+    runtime_name: diagnosing-bugs
+    path: skills/engineering/diagnosing-bugs
+    sha256: 1759d76e63ca1473ce8da73b5bd5539035b34c091275f2626df79fe64b92e847
+  - canonical_id: mattpocock/engineering/domain-modeling
+    runtime_name: domain-modeling
+    path: skills/engineering/domain-modeling
+    sha256: 3e8df1d9dc1f44aad7d16ce7bb232e8d0c585b6691694143ed2897e15ab2212b
+  - canonical_id: mattpocock/engineering/grill-with-docs
+    runtime_name: grill-with-docs
+    path: skills/engineering/grill-with-docs
+    sha256: 55bb83adb60c49e1a85b1bb64038e454f60cdd78d5a5176494aca63d4606f963
+  - canonical_id: mattpocock/engineering/implement
+    runtime_name: implement
+    path: skills/engineering/implement
+    sha256: e5b5f62c8ad970343e83e187736e2d3558fded8f1bc180087be33538f9951058
+  - canonical_id: mattpocock/engineering/improve-codebase-architecture
+    runtime_name: improve-codebase-architecture
+    path: skills/engineering/improve-codebase-architecture
+    sha256: 03aa4403d2f8d59bcc4c383604313014c2a19772f38d93181b4e84b83c1e2601
+  - canonical_id: mattpocock/engineering/prototype
+    runtime_name: prototype
+    path: skills/engineering/prototype
+    sha256: 019c3d9cc1cd9a6ee7c92771f593b00a69f79b21909d9e1dab339d40ffb85dd3
+  - canonical_id: mattpocock/engineering/research
+    runtime_name: research
+    path: skills/engineering/research
+    sha256: ea3f23446b3d8899333f342febbe91c83554fe519cdee2b7a8642c7a73cb783c
+  - canonical_id: mattpocock/engineering/resolving-merge-conflicts
+    runtime_name: resolving-merge-conflicts
+    path: skills/engineering/resolving-merge-conflicts
+    sha256: 187d8663d19f36837d6538ac0a3eda839c173609a3cf77c9b72de2d2846d8b26
+  - canonical_id: mattpocock/engineering/setup-matt-pocock-skills
+    runtime_name: setup-matt-pocock-skills
+    path: skills/engineering/setup-matt-pocock-skills
+    sha256: 00d740b06130a2fa7c785aeaa0f67f75dde3bbc9cc3db31b7821c7ba0adb6128
+  - canonical_id: mattpocock/engineering/tdd
+    runtime_name: tdd
+    path: skills/engineering/tdd
+    sha256: 926871e9a69dca2f0ad717755f976402349072d9ebb07629343ef7e0849a1663
+  - canonical_id: mattpocock/engineering/to-spec
+    runtime_name: to-spec
+    path: skills/engineering/to-spec
+    sha256: e518aa6df810a0545512002bd4cbcb1d173dfdc1d01873f968ffe50b2ca7bc06
+  - canonical_id: mattpocock/engineering/to-tickets
+    runtime_name: to-tickets
+    path: skills/engineering/to-tickets
+    sha256: b1ec7df5a2d3be58c0b932381f8a8126efb71bb0d2be2165793892e85f4d872f
+  - canonical_id: mattpocock/engineering/triage
+    runtime_name: triage
+    path: skills/engineering/triage
+    sha256: c46ac4e2cc0c3e706f8475b083818440cb45e32bfb6a205677c7ac1cdf9d89bc
+  - canonical_id: mattpocock/engineering/wayfinder
+    runtime_name: wayfinder
+    path: skills/engineering/wayfinder
+    sha256: cbf3ea8d0c3da34be84ebcb96428c976d79e3c9f6635e7c746e6142b460d1e43
+  - canonical_id: mattpocock/engineering/wizard
+    runtime_name: wizard
+    path: skills/engineering/wizard
+    sha256: f2ac91f762dfe6d9b18225f6071434793d27b8807f768d02efe31b613379d213
+  - canonical_id: mattpocock/in-progress/claude-handoff
+    runtime_name: claude-handoff
+    path: skills/in-progress/claude-handoff
+    sha256: c84dadb6d28dd04808fd30c05e8991dbe3fe0355e349349859012a6e8698bf33
+  - canonical_id: mattpocock/in-progress/loop-me
+    runtime_name: loop-me
+    path: skills/in-progress/loop-me
+    sha256: 053504d78adf3d7a730fc92937a3470c7b99038f28edc4cfba1e0c3bf0ef8529
+  - canonical_id: mattpocock/in-progress/setup-ts-deep-modules
+    runtime_name: setup-ts-deep-modules
+    path: skills/in-progress/setup-ts-deep-modules
+    sha256: 70c4cac51d1bdba9c9bb2ebed79ec7660a9640ba2a41db459635b7d7a7c3fa00
+  - canonical_id: mattpocock/in-progress/writing-beats
+    runtime_name: writing-beats
+    path: skills/in-progress/writing-beats
+    sha256: 2e78c718bc4958b699c6581d64ee5fa50edc598368edefb88b87ac65df2ec77b
+  - canonical_id: mattpocock/in-progress/writing-fragments
+    runtime_name: writing-fragments
+    path: skills/in-progress/writing-fragments
+    sha256: 8eab88a01a320dc841a8eedb02bd4797e925d7b419604c38ccbedf75f83eb03d
+  - canonical_id: mattpocock/in-progress/writing-shape
+    runtime_name: writing-shape
+    path: skills/in-progress/writing-shape
+    sha256: 45d0ca7d17567d64151bc51c983c702af474dfc36d3d3f4b0ab5a9f6a8cff540
+  - canonical_id: mattpocock/misc/git-guardrails-claude-code
+    runtime_name: git-guardrails-claude-code
+    path: skills/misc/git-guardrails-claude-code
+    sha256: 38d372e7d62753044f30d5665f69693ad3f8942358dbf74e2f7df7b1c8aac3c9
+  - canonical_id: mattpocock/misc/migrate-to-shoehorn
+    runtime_name: migrate-to-shoehorn
+    path: skills/misc/migrate-to-shoehorn
+    sha256: e45600952211020cf177208864420b6ac9605f75e444e6684601c3cefaef7185
+  - canonical_id: mattpocock/misc/scaffold-exercises
+    runtime_name: scaffold-exercises
+    path: skills/misc/scaffold-exercises
+    sha256: 1d24a09e1e52b1d19788d1691ad9dfae506ac919a8fe23d778fc5eb5bba3abae
+  - canonical_id: mattpocock/misc/setup-pre-commit
+    runtime_name: setup-pre-commit
+    path: skills/misc/setup-pre-commit
+    sha256: f1665552ae4c24cafc548eb39049998678afdac3c94fa06c349d860588d1728e
+  - canonical_id: mattpocock/productivity/grill-me
+    runtime_name: grill-me
+    path: skills/productivity/grill-me
+    sha256: 8126150c418601c83db5f687ad6b118916cd721df83c5d8af9f3cefd67c668b1
+  - canonical_id: mattpocock/productivity/grilling
+    runtime_name: grilling
+    path: skills/productivity/grilling
+    sha256: 8b5d000b90085e690c4e5d4690ca0ab0e8b1c9976aacc4b40daa205df92444a2
+  - canonical_id: mattpocock/productivity/handoff
+    runtime_name: handoff
+    path: skills/productivity/handoff
+    sha256: 424669c08fde879c62c7e8baef06f995557958b3cf397aca8db630377efd0a15
+  - canonical_id: mattpocock/productivity/teach
+    runtime_name: teach
+    path: skills/productivity/teach
+    sha256: c7a5a7bf763b9ae00e3ac8c6ec1a133f1e08ad622e636f98ff9fd7702820714d
+  - canonical_id: mattpocock/productivity/to-questionnaire
+    runtime_name: to-questionnaire
+    path: skills/productivity/to-questionnaire
+    sha256: e240564356e6a4c874bf73749f868a1103999e31868feca73c86afad1b13c0cb
+  - canonical_id: mattpocock/productivity/wait-what
+    runtime_name: wait-what
+    path: skills/productivity/wait-what
+    sha256: 08c92d12ac19d19c58bfa5d7ec22f476b7db8d126283774b5fa9d5ef406c6989
+  - canonical_id: mattpocock/productivity/writing-for-agents
+    runtime_name: writing-for-agents
+    path: skills/productivity/writing-for-agents
+    sha256: 7bfaf7b3757b1c51aefeb31a40838f0c0f4dfe6a83044191c1ea12ef8405df28
+- source_id: railroad-rules
+  type: filesystem
+  tree_hash: ebf3cf062e75d012bfe5a207c3225ddbad34a3901777bb537389db7576c088de
+  skills:
+  - canonical_id: railroad-rules/modeling-railway-trackwork-topology
+    runtime_name: modeling-railway-trackwork-topology
+    path: modeling-railway-trackwork-topology
+    sha256: d20e06e8956fd71e8265c9b74025e2bc4d5681e374501bc883263f8bae148995
+  - canonical_id: railroad-rules/railroad-blue-signal
+    runtime_name: railroad-blue-signal
+    path: railroad-blue-signal
+    sha256: f9ba2d5dacb71b829eeb710b21b4654d77bab604e7caf92f4111d3e27f869a8f
+  - canonical_id: railroad-rules/railroad-cfr-218
+    runtime_name: railroad-cfr-218
+    path: railroad-cfr-218
+    sha256: 83d60a601e6adffecd5105014ffda1e78fbb470d3e335d963ef3832abb478948
+  - canonical_id: railroad-rules/railroad-cfr-220
+    runtime_name: railroad-cfr-220
+    path: railroad-cfr-220
+    sha256: f0cd4c8ad7ab960f4f0f49fe0f29dff6871e5f893ccf12eb8387d59d2227d149
+  - canonical_id: railroad-rules/railroad-cfr-236-maintainer
+    runtime_name: railroad-cfr-236-maintainer
+    path: railroad-cfr-236-maintainer
+    sha256: 3a3088ef72b4bfd5c5420e8f768ffaa7c8c0f43223332449414b88eada0422c3
+  - canonical_id: railroad-rules/railroad-cfr-236-operations
+    runtime_name: railroad-cfr-236-operations
+    path: railroad-cfr-236-operations
+    sha256: 347cc7f506f6026c68712f59b58288762ad919f2643c00ffff6448eb6199a6e8
+  - canonical_id: railroad-rules/railroad-cfr-238-operations
+    runtime_name: railroad-cfr-238-operations
+    path: railroad-cfr-238-operations
+    sha256: a61c3bed3e2865848fa95a273a038daf4eb6e88ada7d3a7672bc8315142af5ca
+  - canonical_id: railroad-rules/railroad-cfr-239
+    runtime_name: railroad-cfr-239
+    path: railroad-cfr-239
+    sha256: 19ff3de5b33e32a0612fd69985fa0103b39a67574ce118e0cf2ae8d1d176d18d
+  - canonical_id: railroad-rules/railroad-cror-general
+    runtime_name: railroad-cror-general
+    path: railroad-cror-general
+    sha256: 11ade1b5c2e8c19ea5c3d5174332bd521fd86988b6f5ce233f42df356ffd93c8
+  - canonical_id: railroad-rules/railroad-cror-signals
+    runtime_name: railroad-cror-signals
+    path: railroad-cror-signals
+    sha256: 87e23473638d0fdb96d685ffcc558f94bd3c7bf3ec832ae163d94a2e707ceb67
+  - canonical_id: railroad-rules/railroad-cror-train-movement
+    runtime_name: railroad-cror-train-movement
+    path: railroad-cror-train-movement
+    sha256: 4b224de18d362b5ddb6499c08ef83762c241d9204b29dc1249b60fca7a5d91e5
+  - canonical_id: railroad-rules/railroad-gcor-general
+    runtime_name: railroad-gcor-general
+    path: railroad-gcor-general
+    sha256: 214e1da776b1a779358f9ee250624358b89702379a9703a74e84163a46d61266
+  - canonical_id: railroad-rules/railroad-gcor-signals
+    runtime_name: railroad-gcor-signals
+    path: railroad-gcor-signals
+    sha256: 980cf23a66fbf44d55936a330d15cb8186859941a36eedb1528dfc6d4d2bb1a5
+  - canonical_id: railroad-rules/railroad-gcor-train-control
+    runtime_name: railroad-gcor-train-control
+    path: railroad-gcor-train-control
+    sha256: 8ceccbdd345f54d57a6d1f0208d0e61de4d7087cc405142ac77c916efcfb6fb4
+  - canonical_id: railroad-rules/railroad-gcor-yard-mow
+    runtime_name: railroad-gcor-yard-mow
+    path: railroad-gcor-yard-mow
+    sha256: 74b43f4ac6032135c273890af7e598b73646f25e14ead4096dbc4374af291738
+  - canonical_id: railroad-rules/railroad-norac-authority
+    runtime_name: railroad-norac-authority
+    path: railroad-norac-authority
+    sha256: dc49451799622a0a9a506f66454684514688e594538ae7e33b503d452e7a43ae
+  - canonical_id: railroad-rules/railroad-norac-comms-personnel
+    runtime_name: railroad-norac-comms-personnel
+    path: railroad-norac-comms-personnel
+    sha256: 1a60f0e2582d4eeeac1a75fd0286d458a3658dab69672d8c4c33ae5a9979ff47
+  - canonical_id: railroad-rules/railroad-norac-general
+    runtime_name: railroad-norac-general
+    path: railroad-norac-general
+    sha256: 1b7b13519d57f2b49cd0d0ce0b340f4e442297fa6e84622aead7908801c53e4b
+  - canonical_id: railroad-rules/railroad-norac-signals
+    runtime_name: railroad-norac-signals
+    path: railroad-norac-signals
+    sha256: a9862c1da49d5b04151f2453cb511842ece91605f10edb1df64d718e78b29cc9
+  - canonical_id: railroad-rules/railroad-norac-train-movement
+    runtime_name: railroad-norac-train-movement
+    path: railroad-norac-train-movement
+    sha256: bc208424d0c3ca29f4e3eb098257ef53396f17a6fb3abc4ad79aef545031cdd3
+  - canonical_id: railroad-rules/railroad-signal-aspects
+    runtime_name: railroad-signal-aspects
+    path: railroad-signal-aspects
+    sha256: 5c1e1eb6b6f5ec983f0d924f5effd723d43fd92fad59f46cf477b9570662f9e7
+  - canonical_id: railroad-rules/railroad-track-authority
+    runtime_name: railroad-track-authority
+    path: railroad-track-authority
+    sha256: 22fd9754fbdabda36f6784bb8aefa35dcb9177ffafcc393c32a52e89b389b1bb
+  - canonical_id: railroad-rules/railway-infrastructure-tooling
+    runtime_name: railway-infrastructure-tooling
+    path: railway-infrastructure-tooling
+    sha256: 74b79162a9a4233840de5f1b2d9d7b3fbe6ad36db4ac3cafb8509d02e4c32472
+  - canonical_id: railroad-rules/railway-passenger-door-control
+    runtime_name: railway-passenger-door-control
+    path: railway-passenger-door-control
+    sha256: 1e605faaac726eadeee018806eb59459fc89e42845a28ef6e6dc6ce6717ed448
+- source_id: simple-english
+  type: git
+  resolved_commit: 63f5d57f0c56e24108f63655d40f1a2680bd4e6f
+  tree_hash: dc216e0e97e9fb4223e86791ad0c96328bd1a542e491e6cf2709f9c7d0815d04
+  skills:
+  - canonical_id: simple-english/simple-english
+    runtime_name: simple-english
+    path: skills/simple-english
+    sha256: a2108e48cb0b35f1f856715a172e06cae0c9f928caf9a90fa1e86e8642e09a2a
+- source_id: software-development
+  type: filesystem
+  tree_hash: 7f3e3a3fe0cb1b9dd6ec6cecf44a9e3a20626a8801a99052cce911b993120804
+  skills:
+  - canonical_id: software-development/code-change-planning
+    runtime_name: code-change-planning
+    path: code-change-planning
+    sha256: 1dea39a74364c35665bfdfc6370f768ca0bdcfd02595a4096c93075a08ffea24
+  - canonical_id: software-development/compose-managed-rca
+    runtime_name: compose-managed-rca
+    path: compose-managed-rca
+    sha256: d650fcfd9f333909e7f31795cf8ac6d80fa03ff87de07b72151e7d8c60ea8baa
+  - canonical_id: software-development/cross-service-operation-semantics
+    runtime_name: cross-service-operation-semantics
+    path: cross-service-operation-semantics
+    sha256: 522f94848983a7313a03dbcc796cf16d1911dbae692f791aa8b787ada6c913fa
+  - canonical_id: software-development/focused-diff-review
+    runtime_name: focused-diff-review
+    path: focused-diff-review
+    sha256: 85eae811952a70aa3b0a99d9ed2b4c6f4cde9dffe2a8685c0e16068b835078bd
+  - canonical_id: software-development/gerrit-code-review
+    runtime_name: gerrit-code-review
+    path: gerrit-code-review
+    sha256: b61aa4fbdd41cbbfec1e69d457e4bfd7462bb7eb9d832e080af162b048463705
+  - canonical_id: software-development/indexed-codebase-inspection
+    runtime_name: indexed-codebase-inspection
+    path: indexed-codebase-inspection
+    sha256: 22bd95452dc696f849ef9eed66e6e5b1daefb407351235617e6bc0cc7911da90
+- source_id: superpowers
+  type: git
+  resolved_commit: b36e0829c6d0140e93cfef2ca599b1b07d4a7797
+  tree_hash: 05ad36c615d431446c85eb53a4517804c8bbe138379a838329e14008fe61b061
+  skills:
+  - canonical_id: superpowers/brainstorming
+    runtime_name: brainstorming
+    path: skills/brainstorming
+    sha256: 21b4c62e50291693963f7d65ff5d28c345bb0920ec38b5d0ca44966e14c3e900
+  - canonical_id: superpowers/dispatching-parallel-agents
+    runtime_name: dispatching-parallel-agents
+    path: skills/dispatching-parallel-agents
+    sha256: 1f9784b06c26416d1cc4be664e9e694cd61b951f3db99c96c1fe46f70dce7fb4
+  - canonical_id: superpowers/executing-plans
+    runtime_name: executing-plans
+    path: skills/executing-plans
+    sha256: 75e152f6273e095d79fa9d5061a89b0c0498b07ebc63ae909f0765376fb6b44e
+  - canonical_id: superpowers/finishing-a-development-branch
+    runtime_name: finishing-a-development-branch
+    path: skills/finishing-a-development-branch
+    sha256: f3effc1eb9c6cd693f11a94372eacf031cb83e7cdb3abf626ee33cca135ab176
+  - canonical_id: superpowers/receiving-code-review
+    runtime_name: receiving-code-review
+    path: skills/receiving-code-review
+    sha256: 535f768c942d2de9e11e98f6e35b12f2c4a33016e471332feb8eec7ef85f46e9
+  - canonical_id: superpowers/requesting-code-review
+    runtime_name: requesting-code-review
+    path: skills/requesting-code-review
+    sha256: 825be788f967af985293fb600be90f115d1e4adc0414f9444ccf3bdd03371370
+  - canonical_id: superpowers/subagent-driven-development
+    runtime_name: subagent-driven-development
+    path: skills/subagent-driven-development
+    sha256: dc6837ad0935a61eca1474a72490b3de9cf14140cd033beba3b170753f883077
+  - canonical_id: superpowers/systematic-debugging
+    runtime_name: systematic-debugging
+    path: skills/systematic-debugging
+    sha256: c6e8b317541971cc4e36cbec5e84787107e707603edfe05af7cd6447c7415e56
+  - canonical_id: superpowers/test-driven-development
+    runtime_name: test-driven-development
+    path: skills/test-driven-development
+    sha256: d58a1dbf7e900ad4eda2ebcb2eb9da566f5ab8b9be1738d422f7626ff6393657
+  - canonical_id: superpowers/using-git-worktrees
+    runtime_name: using-git-worktrees
+    path: skills/using-git-worktrees
+    sha256: 473f770a9064e159b9471f68e9eec2d5ca23e7dc3aa954bde52fb1bdfa33d257
+  - canonical_id: superpowers/using-superpowers
+    runtime_name: using-superpowers
+    path: skills/using-superpowers
+    sha256: 860eebd3f28e22455b1a0a93d47049887a96f575a497ac176d5470c4c6a25423
+  - canonical_id: superpowers/verification-before-completion
+    runtime_name: verification-before-completion
+    path: skills/verification-before-completion
+    sha256: 1c20b7b36edee1317d1e7c025aa08037177117d7f7a75d015e8f3bdda1f4c6ea
+  - canonical_id: superpowers/writing-plans
+    runtime_name: writing-plans
+    path: skills/writing-plans
+    sha256: 77ce3686ee810261858c19634bb3dc8af3c4797c9f3d64a780c639ddbd197876
+  - canonical_id: superpowers/writing-skills
+    runtime_name: writing-skills
+    path: skills/writing-skills
+    sha256: 23cc75af09990dbd1cf42691d3eb938acb927a4f1644ca2c2216b9b5be9e5770
+- source_id: ui-ux-pro-max-skill
+  type: git
+  resolved_commit: 8a1a6d857332da32252d77365da90c3f6293b47b
+  tree_hash: d496dc57b7712e55bfdc726083418c671a3c4267f5ad57118586774dbf9bf3a8
+  skills:
+  - canonical_id: ui-ux-pro-max-skill/banner-design
+    runtime_name: banner-design
+    path: .claude/skills/banner-design
+    sha256: b3ec1e37ed4dde9bff037a60b6cf9ec5467fe1c4a81546c61cba96a92b799948
+  - canonical_id: ui-ux-pro-max-skill/brand
+    runtime_name: brand
+    path: .claude/skills/brand
+    sha256: c56f0de521de2b2e353c2bbc8256b758b1889a7b1e909a9a76ba15ef7bd283c6
+  - canonical_id: ui-ux-pro-max-skill/design
+    runtime_name: design
+    path: .claude/skills/design
+    sha256: 0b205207c34f801fde4a809f2c60cefaee5bbf99fcbf5e7981b169dd33848224
+  - canonical_id: ui-ux-pro-max-skill/design-system
+    runtime_name: design-system
+    path: .claude/skills/design-system
+    sha256: 4d9907e408d012d3a456b7968e0c7e82bec13d403ba0f5577f3d93535b496139
+  - canonical_id: ui-ux-pro-max-skill/slides
+    runtime_name: slides
+    path: .claude/skills/slides
+    sha256: 523d854929d9cb8475497ef05dc230025a5a00ceef6775220f57199a0252fa25
+  - canonical_id: ui-ux-pro-max-skill/ui-styling
+    runtime_name: ui-styling
+    path: .claude/skills/ui-styling
+    sha256: 388026e4586f318cd4b8d46bcc12df237541035164c747274a2414bbacfc54f9
+  - canonical_id: ui-ux-pro-max-skill/ui-ux-pro-max
+    runtime_name: ui-ux-pro-max
+    path: .claude/skills/ui-ux-pro-max
+    sha256: 89bd01a06821fb4998458f7fa883a20316b0b2fd92724d99749e9311082774a7

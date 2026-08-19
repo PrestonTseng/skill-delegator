@@ -24,26 +24,25 @@ sources:
     type: git
     location: https://github.com/mattpocock/skills.git
     track: main
-    skill_root: skills   
+    skill_root: skills
   - id: simple-english
     type: git
     location: https://github.com/AminBlg/SimpleEnglish.git
     track: main
-    skill_root: skills   
+    skill_root: skills
   - id: humanizer-zh-tw
-    type: git
-    location: https://github.com/kevintsai1202/Humanizer-zh-TW.git
-    track: main
-    skill_root: .   
+    type: filesystem
+    location: ../src/skill_source/humanizer-zh-tw
+    skill_root: .
   - id: lileesystems
     type: filesystem
-    location: ../src/skill-source/lileesystems
+    location: ../src/skill_source/lileesystems
     skill_root: .
   - id: railroad-rules
     type: filesystem
-    location: ../src/skill-source/railroad-rules
+    location: ../src/skill_source/railroad-rules
     skill_root: .
   - id: software-development
     type: filesystem
-    location: ../src/skill-source/software-development
+    location: ../src/skill_source/software-development
     skill_root: .

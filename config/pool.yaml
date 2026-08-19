@@ -38,16 +38,16 @@ skills:
 
   - claude-video/watch
 
-  - mattpocock/grill-me
-  - mattpocock/grilling
-  - mattpocock/grill-with-docs
-  - mattpocock/domain-modeling
-  - mattpocock/handoff
-  - mattpocock/teach
-  - mattpocock/codebase-design
-  - mattpocock/improve-codebase-architecture
-  - mattpocock/to-spec
-  - mattpocock/to-tickets
+  - mattpocock/productivity/grill-me
+  - mattpocock/productivity/grilling
+  - mattpocock/engineering/grill-with-docs
+  - mattpocock/engineering/domain-modeling
+  - mattpocock/productivity/handoff
+  - mattpocock/productivity/teach
+  - mattpocock/engineering/codebase-design
+  - mattpocock/engineering/improve-codebase-architecture
+  - mattpocock/engineering/to-spec
+  - mattpocock/engineering/to-tickets
 
   - simple-english/simple-english
 
