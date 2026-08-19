@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 dist/
+/docs/superpowers/
 /var/cache/
 /var/example-targets/
 /var/receipts/
