@@ -10,6 +10,7 @@ from tests.fixture_safety import (
     FixtureSafetyError,
     assert_mutation_fixture_confined,
     copy_mutation_fixture,
+    rewrite_mutation_config,
 )
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
@@ -26,6 +27,37 @@ def test_copied_mutation_fixture_rewrites_every_configured_path_under_tmp_path(
     delegations = yaml.safe_load((project / "config" / "delegations.yaml").read_text())
     assert all(not Path(source["location"]).is_absolute() for source in sources["sources"])
     assert all(not Path(target["root"]).is_absolute() for target in delegations["targets"])
+
+
+def test_multi_file_mutation_fixture_rewrites_every_target_under_tmp_path(
+    tmp_path: Path,
+) -> None:
+    project = copy_mutation_fixture(REPOSITORY_ROOT, tmp_path)
+    config = project / "config"
+    legacy_path = config / "delegations.yaml"
+    targets = yaml.safe_load(legacy_path.read_text(encoding="utf-8"))["targets"]
+    legacy_path.unlink()
+    delegation_dir = config / "delegations"
+    delegation_dir.mkdir()
+    expected_ids = {target["id"] for target in targets}
+    for target in targets:
+        target["root"] = f"/external/{target['id']}"
+        (delegation_dir / f"{target['id']}.yaml").write_text(
+            yaml.safe_dump({"schema_version": 1, "target": target}, sort_keys=False),
+            encoding="utf-8",
+        )
+
+    rewrite_mutation_config(config)
+
+    assert_mutation_fixture_confined(project, tmp_path)
+    actual_ids: set[str] = set()
+    for path in sorted(delegation_dir.glob("*.yaml")):
+        target = yaml.safe_load(path.read_text(encoding="utf-8"))["target"]
+        actual_ids.add(target["id"])
+        root = (config / target["root"]).resolve()
+        assert root.is_relative_to(project)
+        assert root == project / "var" / "example-targets" / target["id"]
+    assert actual_ids == expected_ids
 
 
 def test_mutation_fixture_refuses_external_target(tmp_path: Path) -> None:

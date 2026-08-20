@@ -59,6 +59,41 @@ def _configured_path(config: Path, raw: object, label: str) -> Path:
     return path if path.is_absolute() else config / path
 
 
+def _delegation_targets(config: Path) -> tuple[tuple[Path, dict[str, Any]], ...]:
+    legacy_path = config / "delegations.yaml"
+    directory = config / "delegations"
+    legacy_exists = os.path.lexists(legacy_path)
+    directory_exists = os.path.lexists(directory)
+    if legacy_exists == directory_exists:
+        raise FixtureSafetyError(
+            "mutation fixture must contain exactly one of delegations.yaml or delegations/"
+        )
+
+    if legacy_exists:
+        document = _document(legacy_path)
+        targets = document.get("targets")
+        if not isinstance(targets, list) or not targets:
+            raise FixtureSafetyError("delegations.yaml must contain a non-empty targets list")
+        return tuple((legacy_path, target) for target in targets)
+
+    if directory.is_symlink() or not directory.is_dir():
+        raise FixtureSafetyError("delegations/ must be a non-symlink directory")
+    paths = sorted(directory.iterdir(), key=lambda path: os.fsencode(path.name))
+    if not paths:
+        raise FixtureSafetyError("delegations/ must contain at least one target file")
+    targets_with_paths: list[tuple[Path, dict[str, Any]]] = []
+    for path in paths:
+        if path.suffix != ".yaml" or path.is_symlink() or not path.is_file():
+            raise FixtureSafetyError(
+                f"delegations/{path.name} must be a non-symlink regular YAML file"
+            )
+        target = _document(path).get("target")
+        if not isinstance(target, dict):
+            raise FixtureSafetyError(f"delegations/{path.name} must contain a target mapping")
+        targets_with_paths.append((path, target))
+    return tuple(targets_with_paths)
+
+
 def rewrite_mutation_config(config: Path) -> None:
     """Rewrite every configured source and target to the copied pytest project."""
     sources_path = config / "sources.yaml"
@@ -74,16 +109,22 @@ def rewrite_mutation_config(config: Path) -> None:
         entry["location"] = f"../tests/fixtures/{fixture_name}"
     sources_path.write_text(yaml.safe_dump(sources, sort_keys=False), encoding="utf-8")
 
-    delegations_path = config / "delegations.yaml"
-    delegations = _document(delegations_path)
-    targets = delegations.get("targets")
-    if not isinstance(targets, list) or not targets:
-        raise FixtureSafetyError("delegations.yaml must contain a non-empty targets list")
-    for target in targets:
+    targets_with_paths = _delegation_targets(config)
+    legacy = targets_with_paths[0][0] == config / "delegations.yaml"
+    for path, target in targets_with_paths:
         if not isinstance(target, dict) or not isinstance(target.get("id"), str):
             raise FixtureSafetyError("every copied target must have a string id")
         target["root"] = f"../var/example-targets/{target['id']}"
-    delegations_path.write_text(yaml.safe_dump(delegations, sort_keys=False), encoding="utf-8")
+        if not legacy:
+            document = _document(path)
+            document["target"] = target
+            path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    if legacy:
+        document = _document(targets_with_paths[0][0])
+        document["targets"] = [target for _, target in targets_with_paths]
+        targets_with_paths[0][0].write_text(
+            yaml.safe_dump(document, sort_keys=False), encoding="utf-8"
+        )
 
 
 def copy_mutation_config(repository_root: Path, project: Path) -> Path:
@@ -122,10 +163,8 @@ def assert_mutation_fixture_confined(project: Path, tmp_path: Path) -> None:
             raise FixtureSafetyError(f"source {index} skill_root must be a string")
         _require_confined(location / skill_root, tmp_path, f"source {index} skill_root")
 
-    delegations = _document(config / "delegations.yaml").get("targets")
-    if not isinstance(delegations, list) or not delegations:
-        raise FixtureSafetyError("delegations.yaml must contain a non-empty targets list")
-    for index, target in enumerate(delegations):
+    targets_with_paths = _delegation_targets(config)
+    for index, (_, target) in enumerate(targets_with_paths):
         if not isinstance(target, dict):
             raise FixtureSafetyError(f"target {index} must be a mapping")
         root = _configured_path(config, target.get("root"), f"target {index}")
