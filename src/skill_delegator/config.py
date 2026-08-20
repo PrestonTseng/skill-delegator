@@ -134,7 +134,9 @@ def _reject_symlink_components(repository_root: Path, target_root: Path) -> None
             raise ConfigError(f"main example target path component must be a directory: {current}")
 
 
-def load_config(config_dir: Path, *, require_lock: bool = True) -> AuthorityConfig:
+def load_config(
+    config_dir: Path, *, require_lock: bool = True, target_scope: str | None = None
+) -> AuthorityConfig:
     """Load and validate one authority without reading source or target contents."""
 
     config_dir = config_dir.resolve(strict=False)
@@ -199,7 +201,8 @@ def load_config(config_dir: Path, *, require_lock: bool = True) -> AuthorityConf
                 raise ConfigError(
                     "main example target roots must resolve under var/example-targets/"
                 )
-            _reject_symlink_components(repository_root, lexical_root)
+            if target_scope is None or target["id"] == target_scope:
+                _reject_symlink_components(repository_root, lexical_root)
 
     sources = tuple(
         SourceSpec(
