@@ -67,7 +67,7 @@ jobs:
           uv run --frozen --python 3.12 skillctl apply --config config
           uv run --frozen --python 3.12 skillctl verify --config config
           uv run --frozen --python 3.12 skillctl status --config config --json > /tmp/skillctl-status.json
-          python3 -c 'import json; document=json.load(open("/tmp/skillctl-status.json")); summary=document["operation_summary"]; assert document["result"] == "converged" and summary["verified_links"] == 143 and summary["drift_count"] == 0 and summary["invalid_count"] == 0, document'
+          python3 -c 'import json; resolved=json.load(open("/tmp/skillctl-resolve.json")); document=json.load(open("/tmp/skillctl-status.json")); summary=document["operation_summary"]; expected=sum(len(target["links"]) for target in resolved["targets"]); assert document["result"] == "converged" and summary["desired_targets"] == len(resolved["targets"]) and summary["desired_links"] == expected and summary["verified_links"] == expected and summary["drift_count"] == 0 and summary["invalid_count"] == 0, document'
           uv run --frozen --python 3.12 skillctl plan --config config --json > /tmp/skillctl-plan-second.json
           uv run --frozen --python 3.12 skillctl apply --config config > /tmp/skillctl-apply-second.txt
           python3 -c 'from pathlib import Path; assert Path("/tmp/skillctl-apply-second.txt").read_text().strip() == "Already converged"'
@@ -125,7 +125,7 @@ jobs:
           uv run --frozen --python 3.12 skillctl apply --config config
           uv run --frozen --python 3.12 skillctl verify --config config
           uv run --frozen --python 3.12 skillctl status --config config --json > /tmp/skillctl-status.json
-          python3 -c 'import json; document=json.load(open("/tmp/skillctl-status.json")); summary=document["operation_summary"]; assert document["result"] == "converged" and summary["verified_links"] == 143 and summary["drift_count"] == 0 and summary["invalid_count"] == 0, document'
+          python3 -c 'import json; resolved=json.load(open("/tmp/skillctl-resolve.json")); document=json.load(open("/tmp/skillctl-status.json")); summary=document["operation_summary"]; expected=sum(len(target["links"]) for target in resolved["targets"]); assert document["result"] == "converged" and summary["desired_targets"] == len(resolved["targets"]) and summary["desired_links"] == expected and summary["verified_links"] == expected and summary["drift_count"] == 0 and summary["invalid_count"] == 0, document'
           uv run --frozen --python 3.12 skillctl plan --config config --json > /tmp/skillctl-plan-second.json
           uv run --frozen --python 3.12 skillctl apply --config config > /tmp/skillctl-apply-second.txt
           python3 -c 'from pathlib import Path; assert Path("/tmp/skillctl-apply-second.txt").read_text().strip() == "Already converged"'
