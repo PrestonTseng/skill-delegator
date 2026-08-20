@@ -84,6 +84,18 @@ class TargetSelectionError(ValueError):
     """A requested target is not declared by the authority configuration."""
 
 
+def ensure_unscoped_roots_disjoint(config: AuthorityConfig) -> None:
+    """Reject unsafe aggregate access to overlapping independently deployed roots."""
+
+    if config.delegation_mode != "multiple":
+        return
+    roots = tuple(Path(os.path.abspath(target.root)) for target in config.targets)
+    for index, root in enumerate(roots):
+        for other in roots[index + 1 :]:
+            if root == other or root.is_relative_to(other) or other.is_relative_to(root):
+                raise TargetSelectionError("unscoped multi-file target roots overlap")
+
+
 def _selected_targets(config: AuthorityConfig, target_id: str | None) -> tuple[TargetSpec, ...]:
     if target_id is None:
         return config.targets
@@ -186,6 +198,8 @@ def _fresh_verification(config_dir: Path, target_id: str | None = None):
     config_dir = config_dir.resolve(strict=False)
     config = load_config(config_dir, target_scope=target_id)
     _selected_targets(config, target_id)
+    if target_id is None:
+        ensure_unscoped_roots_disjoint(config)
     lock = _load_validated_lock(config_dir)
     desired = resolve_desired_state(config, lock)
     desired = _select_desired_target(desired, target_id)
@@ -362,6 +376,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             config_dir = args.config.resolve(strict=False)
             config = load_config(config_dir, target_scope=args.target)
             selected_targets = _selected_targets(config, args.target)
+            if args.target is None:
+                ensure_unscoped_roots_disjoint(config)
             lock = _load_validated_lock(config_dir)
             desired = resolve_desired_state(config, lock)
             desired = _select_desired_target(desired, args.target)
@@ -388,6 +404,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             config_dir = args.config.resolve(strict=False)
             config = load_config(config_dir, target_scope=args.target)
             selected_targets = _selected_targets(config, args.target)
+            if args.target is None:
+                ensure_unscoped_roots_disjoint(config)
             lock = _load_validated_lock(config_dir)
             desired = resolve_desired_state(config, lock)
             desired = _select_desired_target(desired, args.target)

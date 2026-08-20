@@ -150,7 +150,7 @@ def resolve_desired_state(config: AuthorityConfig, lock: SkillLock) -> DesiredSt
     locked = _locked_skills(config, lock)
 
     target_ids: set[str] = set()
-    occupied_paths: dict[Path, tuple[str, str]] = {}
+    occupied_paths: dict[tuple[str, Path], tuple[str, str]] = {}
     desired_targets: list[DesiredTarget] = []
     for target in sorted(config.targets, key=lambda item: item.id):
         if target.id in target_ids:
@@ -187,14 +187,15 @@ def resolve_desired_state(config: AuthorityConfig, lock: SkillLock) -> DesiredSt
             runtime_names[skill.runtime_name] = artifact_id
 
             target_path = _target_path(normalized_root, artifact_id)
-            previous_placement = occupied_paths.get(target_path)
+            collision_key = (target.deployment_scope, target_path)
+            previous_placement = occupied_paths.get(collision_key)
             if previous_placement is not None:
                 previous_target, previous_id = previous_placement
                 raise ResolutionError(
                     f"target path collision at {target_path}: "
                     f"{previous_target}/{previous_id} and {target.id}/{artifact_id}"
                 )
-            occupied_paths[target_path] = (target.id, artifact_id)
+            occupied_paths[collision_key] = (target.id, artifact_id)
             links.append(
                 DesiredLink(
                     artifact_id=artifact_id,

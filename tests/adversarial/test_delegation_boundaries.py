@@ -106,6 +106,28 @@ def test_rejects_normalized_target_path_collision(tmp_path: Path) -> None:
         resolve_desired_state(config, lock)
 
 
+def test_equal_paths_are_isolated_by_multi_file_deployment_scope(tmp_path: Path) -> None:
+    config = authority(tmp_path, ("one/same",), ("one/same",))
+    shared_root = tmp_path / "shared-target"
+    targets = (
+        TargetSpec("first", shared_root, ("one/same",), "delegations/first.yaml"),
+        TargetSpec("second", shared_root, ("one/same",), "delegations/second.yaml"),
+    )
+    lock = SkillLock(1, (locked("one", "one/same", "same", "same"),))
+
+    state = resolve_desired_state(
+        replace(config, targets=targets, delegation_mode="multiple"), lock
+    )
+
+    assert tuple(target.id for target in state.targets) == ("first", "second")
+
+    legacy_targets = tuple(replace(target, deployment_scope="shared") for target in targets)
+    with pytest.raises(ResolutionError, match="target path collision"):
+        resolve_desired_state(
+            replace(config, targets=legacy_targets, delegation_mode="single"), lock
+        )
+
+
 def snapshot(root: Path) -> tuple[tuple[str, str, str], ...]:
     values: list[tuple[str, str, str]] = []
     for path in sorted(root.rglob("*")):

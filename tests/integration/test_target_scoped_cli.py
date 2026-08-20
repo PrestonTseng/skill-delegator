@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from skill_delegator import cli as cli_module
+from skill_delegator import verifier as verifier_module
 from skill_delegator.cli import main
 
 
@@ -46,6 +48,24 @@ def _write_config(project: Path) -> Path:
         (config / filename).write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
     assert main(["lock", "--config", str(config)]) == 0
     return config
+
+
+def _use_per_target_delegations(config: Path, roots: dict[str, str]) -> None:
+    (config / "delegations.yaml").unlink()
+    delegations = config / "delegations"
+    delegations.mkdir()
+    for target_id, root in roots.items():
+        document = {
+            "schema_version": 1,
+            "target": {
+                "id": target_id,
+                "root": root,
+                "grants": ["example/one"],
+            },
+        }
+        (delegations / f"{target_id}.yaml").write_text(
+            yaml.safe_dump(document, sort_keys=False), encoding="utf-8"
+        )
 
 
 def test_target_scoped_workflow_only_reads_and_mutates_selected_target(
@@ -112,6 +132,89 @@ def test_target_scope_keeps_whole_authority_collision_validation(tmp_path: Path,
     assert captured.out == ""
     assert "target path collision" in captured.err
     assert not (project / "targets").exists()
+
+
+def test_multi_file_equal_roots_allow_scoped_plan_and_scan_only_selected_target(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = tmp_path / "project"
+    config = _write_config(project)
+    capsys.readouterr()
+    _use_per_target_delegations(
+        config,
+        {
+            "reviewer": "../targets/shared",
+            "worker": "../targets/shared",
+        },
+    )
+    scanned: list[str] = []
+    real_scan_target = cli_module.scan_target
+
+    def recording_scan(target):
+        scanned.append(target.id)
+        return real_scan_target(target)
+
+    monkeypatch.setattr(cli_module, "scan_target", recording_scan)
+
+    assert main(["plan", "--json", "--target", "worker", "--config", str(config)]) == 1
+    plan = json.loads(capsys.readouterr().out)
+    assert {operation["target_id"] for operation in plan["operations"]} == {"worker"}
+    assert scanned == ["worker"]
+
+
+@pytest.mark.parametrize("command", ["plan", "apply", "verify", "status"])
+@pytest.mark.parametrize("overlap", ["equal", "parent-child"])
+def test_unscoped_multi_file_overlapping_roots_fail_before_target_scan(
+    command: str,
+    overlap: str,
+    tmp_path: Path,
+    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = tmp_path / "project"
+    config = _write_config(project)
+    capsys.readouterr()
+    second_root = "../targets/a" if overlap == "equal" else "../targets/a/child"
+    _use_per_target_delegations(
+        config,
+        {
+            "reviewer": "../targets/a",
+            "worker": second_root,
+        },
+    )
+
+    def forbidden_scan(*_args, **_kwargs):
+        raise AssertionError("target scan must not run before overlap rejection")
+
+    monkeypatch.setattr(cli_module, "scan_target", forbidden_scan)
+    monkeypatch.setattr(verifier_module, "scan_target", forbidden_scan)
+
+    assert main([command, "--config", str(config)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "Target error: unscoped multi-file target roots overlap\n"
+    assert len(captured.err) <= 80
+    assert not (project / "targets").exists()
+
+
+def test_unscoped_multi_file_distinct_roots_reach_both_targets(tmp_path: Path, capsys) -> None:
+    project = tmp_path / "project"
+    config = _write_config(project)
+    capsys.readouterr()
+    _use_per_target_delegations(
+        config,
+        {
+            "reviewer": "../targets/reviewer",
+            "worker": "../targets/worker",
+        },
+    )
+
+    assert main(["plan", "--json", "--config", str(config)]) == 1
+    plan = json.loads(capsys.readouterr().out)
+    assert {operation["target_id"] for operation in plan["operations"]} == {
+        "reviewer",
+        "worker",
+    }
 
 
 @pytest.mark.parametrize(
