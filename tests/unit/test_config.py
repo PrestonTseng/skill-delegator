@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -16,7 +17,7 @@ from skill_delegator.errors import ConfigError
 from skill_delegator.schema_validation import schema_text
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
-EXAMPLE_CONFIG = REPOSITORY_ROOT / "config"
+EXAMPLE_CONFIG = REPOSITORY_ROOT / "tests" / "fixtures" / "safe-config"
 CONFIG_FILENAMES = (
     "authority.yaml",
     "sources.yaml",
@@ -67,6 +68,264 @@ def rewrite_yaml(config_dir: Path, filename: str, mutate: object) -> None:
     path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
 
 
+def write_yaml(path: Path, document: dict[str, Any]) -> None:
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def use_per_target_delegations(config_dir: Path) -> Path:
+    (config_dir / "delegations.yaml").unlink()
+    rewrite_yaml(
+        config_dir,
+        "authority.yaml",
+        lambda document: document["authority"].update(
+            {"id": "non-fixture", "fixture_policy": "none"}
+        ),
+    )
+    delegations = config_dir / "delegations"
+    delegations.mkdir()
+    return delegations
+
+
+def target_document(target_id: str, *, grants: list[str] | None = None) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "target": {
+            "id": target_id,
+            "root": f"../targets/{target_id}",
+            "grants": grants or ["example/hello"],
+        },
+    }
+
+
+def test_per_target_delegation_document_loads_with_scope_mode_and_inputs(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    write_yaml(delegations / "worker.yaml", target_document("worker"))
+
+    loaded = load_config(config)
+
+    assert loaded.delegation_mode == "multiple"
+    assert loaded.targets[0].deployment_scope == "delegations/worker.yaml"
+    assert config_module.config_input_names(config) == (
+        "authority.yaml",
+        "delegations/worker.yaml",
+        "pool.yaml",
+        "skill-lock.yaml",
+        "sources.yaml",
+    )
+
+
+def test_legacy_delegations_use_shared_scope_and_single_mode() -> None:
+    loaded = load_config(EXAMPLE_CONFIG)
+
+    assert loaded.delegation_mode == "single"
+    assert all(target.deployment_scope == "shared" for target in loaded.targets)
+    assert config_module.config_input_names(EXAMPLE_CONFIG) == tuple(sorted(CONFIG_FILENAMES))
+
+
+def test_per_target_files_are_discovered_in_filesystem_byte_order(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    write_yaml(delegations / "zeta.yaml", target_document("zeta"))
+    write_yaml(delegations / "alpha.yaml", target_document("alpha"))
+
+    assert config_module.config_input_names(config) == (
+        "authority.yaml",
+        "delegations/alpha.yaml",
+        "delegations/zeta.yaml",
+        "pool.yaml",
+        "skill-lock.yaml",
+        "sources.yaml",
+    )
+    assert tuple(target.id for target in load_config(config).targets) == ("alpha", "zeta")
+
+
+def test_per_target_filename_stem_must_match_target_id(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    write_yaml(delegations / "worker.yaml", target_document("other"))
+
+    with pytest.raises(ConfigError, match=r"delegations/worker\.yaml.*other"):
+        load_config(config)
+
+
+def test_duplicate_ids_across_per_target_files_are_filename_bearing(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    write_yaml(delegations / "first.yaml", target_document("duplicate"))
+    write_yaml(delegations / "second.yaml", target_document("duplicate"))
+
+    with pytest.raises(ConfigError, match=r"delegations/second\.yaml.*duplicate target id"):
+        load_config(config)
+
+
+def test_legacy_and_per_target_forms_cannot_both_be_present(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    delegations = config / "delegations"
+    delegations.mkdir()
+    write_yaml(delegations / "worker.yaml", target_document("worker"))
+
+    with pytest.raises(ConfigError, match=r"delegations\.yaml.*delegations/"):
+        load_config(config)
+
+
+def test_per_target_directory_cannot_be_empty(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    use_per_target_delegations(config)
+
+    with pytest.raises(ConfigError, match=r"delegations/.*empty"):
+        load_config(config)
+
+
+@pytest.mark.parametrize("entry_name", ("nested", "worker.txt"))
+def test_per_target_directory_rejects_nested_or_non_yaml_entries(
+    tmp_path: Path, entry_name: str
+) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    entry = delegations / entry_name
+    if entry.suffix:
+        entry.write_text("not a delegation", encoding="utf-8")
+    else:
+        entry.mkdir()
+
+    with pytest.raises(ConfigError, match=rf"delegations/{entry_name.replace('.', r'\.')}"):
+        load_config(config)
+
+
+def test_per_target_directory_rejects_symlinked_file(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    outside = tmp_path / "outside.yaml"
+    write_yaml(outside, target_document("worker"))
+    (delegations / "worker.yaml").symlink_to(outside)
+
+    with pytest.raises(ConfigError, match=r"delegations/worker\.yaml.*symlink"):
+        load_config(config)
+
+
+def test_per_target_directory_itself_cannot_be_a_symlink(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    (config / "delegations.yaml").unlink()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    write_yaml(outside / "worker.yaml", target_document("worker"))
+    (config / "delegations").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ConfigError, match=r"delegations/.*symlink"):
+        load_config(config)
+
+
+def test_per_target_regular_file_is_read_from_discovered_directory(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    write_yaml(delegations / "worker.yaml", target_document("worker"))
+
+    loaded = load_config(config)
+
+    assert loaded.targets[0].id == "worker"
+    assert loaded.targets[0].root == tmp_path / "targets" / "worker"
+
+
+def test_per_target_directory_replacement_after_discovery_cannot_substitute_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    write_yaml(delegations / "worker.yaml", target_document("worker"))
+    outside = tmp_path / "outside-delegations"
+    outside.mkdir()
+    write_yaml(
+        outside / "worker.yaml",
+        {
+            **target_document("worker"),
+            "target": {
+                **target_document("worker")["target"],
+                "root": "../targets/substituted",
+            },
+        },
+    )
+    discovered = tmp_path / "discovered-delegations"
+    real_discovery = config_module._delegation_input_names
+
+    def replace_directory_after_discovery(config_dir: Path):
+        result = real_discovery(config_dir)
+        delegations.rename(discovered)
+        delegations.symlink_to(outside, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(config_module, "_delegation_input_names", replace_directory_after_discovery)
+
+    with pytest.raises(ConfigError, match="configuration snapshot changed"):
+        load_config(config)
+
+
+def test_per_target_entry_added_after_read_changes_entry_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    write_yaml(delegations / "worker.yaml", target_document("worker"))
+    real_read = config_module._read_verified_file
+
+    def add_entry_after_read(
+        directory_fd: int,
+        basename: str,
+        filename: str,
+        discovered_stat: os.stat_result,
+    ) -> bytes:
+        data = real_read(directory_fd, basename, filename, discovered_stat)
+        write_yaml(delegations / "other.yaml", target_document("other"))
+        return data
+
+    monkeypatch.setattr(config_module, "_read_verified_file", add_entry_after_read)
+
+    with pytest.raises(ConfigError, match=r"delegations/.*entry set changed"):
+        load_config(config)
+
+
+def test_per_target_invalid_utf8_is_filename_bearing(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    (delegations / "worker.yaml").write_bytes(b"\xff")
+
+    with pytest.raises(ConfigError, match=r"delegations/worker\.yaml.*invalid UTF-8"):
+        load_config(config)
+
+
+def test_per_target_duplicate_yaml_keys_are_filename_bearing(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    (delegations / "worker.yaml").write_text(
+        "schema_version: 1\ntarget:\n  id: worker\n  id: duplicate\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=r"delegations/worker\.yaml: invalid YAML:.*duplicate"):
+        load_config(config)
+
+
+def test_per_target_directory_rejects_unsafe_filename(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    write_yaml(delegations / "Worker.yaml", target_document("worker"))
+
+    with pytest.raises(ConfigError, match=r"delegations/Worker\.yaml.*filename"):
+        load_config(config)
+
+
+def test_per_target_grants_outside_pool_are_filename_bearing(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    write_yaml(
+        delegations / "worker.yaml",
+        target_document("worker", grants=["example/not-in-pool"]),
+    )
+
+    with pytest.raises(ConfigError, match=r"delegations/worker\.yaml.*outside pool"):
+        load_config(config)
+
+
 def test_main_example_parses_with_safe_lexical_target_roots() -> None:
     config = load_config(EXAMPLE_CONFIG)
 
@@ -74,7 +333,7 @@ def test_main_example_parses_with_safe_lexical_target_roots() -> None:
     assert len(config.sources) == 1
     assert len(config.pool) == 1
     assert len(config.targets) == 2
-    expected_parent = (REPOSITORY_ROOT / "var" / "example-targets").resolve()
+    expected_parent = (EXAMPLE_CONFIG.parent / "var" / "example-targets").resolve()
     assert all(target.root.is_relative_to(expected_parent) for target in config.targets)
     assert (
         config.sources[0].location
@@ -120,8 +379,9 @@ def test_non_fixture_target_root_preserves_symlink_ancestor_lexically(tmp_path: 
 
     config = load_config(config_dir)
 
-    assert config.targets[0].root == tmp_path / "linked" / "worker"
-    assert config.targets[0].root != (tmp_path / "linked" / "worker").resolve()
+    worker = next(target for target in config.targets if target.id == "worker")
+    assert worker.root == tmp_path / "linked" / "worker"
+    assert worker.root != (tmp_path / "linked" / "worker").resolve()
 
 
 def test_lock_generation_loader_mode_allows_missing_lock_but_validation_requires_it(
@@ -587,7 +847,8 @@ def test_ordinary_unicode_is_preserved_in_all_path_fields(tmp_path: Path) -> Non
 
     assert config.sources[0].location == (config_dir / "../資料/技能").resolve()
     assert config.sources[0].skill_root == Path("能力")
-    assert config.targets[0].root == (config_dir / "../輸出/目標").resolve()
+    worker = next(target for target in config.targets if target.id == "worker")
+    assert worker.root == (config_dir / "../輸出/目標").resolve()
 
 
 def test_git_location_remains_repository_string_while_filesystem_location_is_resolved(

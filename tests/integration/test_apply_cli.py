@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from skill_delegator.cli import main
+from tests.fixture_safety import run_cli
 
 
 def _write_config(project: Path) -> Path:
@@ -43,7 +43,7 @@ def _write_config(project: Path) -> Path:
     }
     for filename, document in documents.items():
         (config / filename).write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
-    assert main(["lock", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["lock", "--config", str(config)]) == 0
     return config
 
 
@@ -51,7 +51,7 @@ def test_apply_cli_rebuilds_plan_applies_and_is_repeatable(tmp_path: Path, capsy
     config = _write_config(tmp_path / "project")
     capsys.readouterr()
 
-    assert main(["apply", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
     first = capsys.readouterr()
     assert first.out == "Applied 2 changes to 1 target\n"
     assert first.err == ""
@@ -59,7 +59,7 @@ def test_apply_cli_rebuilds_plan_applies_and_is_repeatable(tmp_path: Path, capsy
     assert (target / "example" / "one").is_symlink()
     assert (target / "example" / "two").is_symlink()
 
-    assert main(["apply", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
     repeat = capsys.readouterr()
     assert repeat.out == "Already converged\n"
     assert repeat.err == ""
@@ -68,7 +68,7 @@ def test_apply_cli_rebuilds_plan_applies_and_is_repeatable(tmp_path: Path, capsy
 def test_apply_cli_requires_yes_for_remove_and_preserves_unmanaged(tmp_path: Path, capsys) -> None:
     config = _write_config(tmp_path / "project")
     capsys.readouterr()
-    assert main(["apply", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
     capsys.readouterr()
     target = tmp_path / "project" / "target"
     sentinel = target / "mine.txt"
@@ -79,13 +79,13 @@ def test_apply_cli_requires_yes_for_remove_and_preserves_unmanaged(tmp_path: Pat
     document["targets"][0]["grants"] = ["example/one"]
     path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
 
-    assert main(["apply", "--config", str(config)]) == 4
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 4
     refused = capsys.readouterr()
     assert refused.out == ""
     assert refused.err == "Apply refused: plan contains REMOVE; pass --yes to confirm\n"
     assert (target / "example" / "two").is_symlink()
 
-    assert main(["apply", "--yes", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["apply", "--yes", "--config", str(config)]) == 0
     applied = capsys.readouterr()
     assert applied.err == ""
     assert not (target / "example" / "two").exists()
@@ -101,7 +101,7 @@ def test_apply_cli_rejects_blocked_target_without_traceback(tmp_path: Path, caps
     occupied.parent.mkdir(parents=True)
     occupied.write_text("unmanaged", encoding="utf-8")
 
-    assert main(["apply", "--config", str(config)]) == 3
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 3
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err.startswith("Apply blocked: target worker desired path")

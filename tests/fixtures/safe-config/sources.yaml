@@ -1,0 +1,6 @@
+schema_version: 1
+sources:
+  - id: example
+    type: filesystem
+    location: ../example-source
+    skill_root: .

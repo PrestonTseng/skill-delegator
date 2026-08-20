@@ -124,12 +124,48 @@ def test_config_read_retains_ancestor_inodes_and_disables_stale_repository_prove
 
     assert fired
     assert payload == expected
-    current_inputs = {name: expected for name in verifier._CONFIG_INPUTS}
-    identities = {name: identity[0] for name in verifier._CONFIG_INPUTS}
+    current_inputs = {"authority.yaml": expected}
+    identities = {"authority.yaml": identity[0]}
     assert _repository_commit(config, current_inputs, expected_identities=identities) == (
         None,
         False,
     )
+
+
+def test_nested_config_input_records_its_actual_parent_identity(tmp_path: Path) -> None:
+    config = tmp_path / "config"
+    delegations = config / "delegations"
+    delegations.mkdir(parents=True)
+    (config / "authority.yaml").write_bytes(b"authority")
+    (delegations / "leo.yaml").write_bytes(b"leo")
+    authority_identity: list[verifier._ConfigInputIdentity] = []
+    target_identity: list[verifier._ConfigInputIdentity] = []
+
+    assert (
+        _read_config_input(config, "authority.yaml", identity_out=authority_identity)
+        == b"authority"
+    )
+    assert (
+        _read_config_input(config, "delegations/leo.yaml", identity_out=target_identity) == b"leo"
+    )
+
+    config_stat = config.stat(follow_symlinks=False)
+    delegations_stat = delegations.stat(follow_symlinks=False)
+    assert authority_identity[0][0] == (config_stat.st_dev, config_stat.st_ino)
+    assert target_identity[0][0] == (delegations_stat.st_dev, delegations_stat.st_ino)
+    assert authority_identity[0][0] != target_identity[0][0]
+
+
+def test_nested_config_input_rejects_symlinked_parent(tmp_path: Path) -> None:
+    config = tmp_path / "config"
+    external = tmp_path / "external"
+    config.mkdir()
+    external.mkdir()
+    (external / "leo.yaml").write_bytes(b"external")
+    (config / "delegations").symlink_to(external, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="safely read"):
+        _read_config_input(config, "delegations/leo.yaml")
 
 
 def test_source_tamper_after_apply_is_drift(tmp_path: Path) -> None:

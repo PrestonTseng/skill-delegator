@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 import stat
 from pathlib import Path
@@ -22,19 +23,42 @@ class ReceiptError(RuntimeError):
     """A receipt cannot be validated or safely published."""
 
 
-_CONFIG_NAMES = (
+_SHARED_CONFIG_NAMES = (
     "authority.yaml",
-    "delegations.yaml",
     "pool.yaml",
     "skill-lock.yaml",
     "sources.yaml",
 )
+_TARGET_CONFIG_NAME = re.compile(r"delegations/[a-z][a-z0-9-]*\.yaml")
+
+
+def _config_names(result: VerificationResult) -> tuple[str, ...]:
+    names = tuple(item.name for item in result.config_hashes)
+    if any(not isinstance(name, str) for name in names):
+        raise ReceiptError("verification result has invalid config_hashes identities")
+    return names
 
 
 def _validate_semantics(result: VerificationResult) -> None:
     if result.result != "converged":
         raise ReceiptError("verification receipt requires a converged result")
-    if tuple(sorted(item.name for item in result.config_hashes)) != _CONFIG_NAMES:
+    config_names = _config_names(result)
+    shared_names = tuple(name for name in config_names if name in _SHARED_CONFIG_NAMES)
+    legacy_count = config_names.count("delegations.yaml")
+    target_names = tuple(name for name in config_names if _TARGET_CONFIG_NAME.fullmatch(name))
+    if (
+        config_names != tuple(sorted(config_names, key=os.fsencode))
+        or len(config_names) != len(set(config_names))
+        or tuple(sorted(shared_names, key=os.fsencode)) != _SHARED_CONFIG_NAMES
+        or not (
+            (legacy_count == 1 and not target_names and len(config_names) == 5)
+            or (
+                legacy_count == 0
+                and bool(target_names)
+                and len(config_names) == len(_SHARED_CONFIG_NAMES) + len(target_names)
+            )
+        )
+    ):
         raise ReceiptError("verification result has invalid config_hashes identities")
     source_ids = [item.source_id for item in result.locked_sources]
     if len(source_ids) != len(set(source_ids)):
@@ -93,6 +117,7 @@ def _validate_semantics(result: VerificationResult) -> None:
 def receipt_document(result: VerificationResult) -> dict[str, Any]:
     """Render only allow-listed, deterministic verification evidence."""
 
+    _config_names(result)
     return {
         "schema_version": 1,
         "authority_id": result.authority_id,

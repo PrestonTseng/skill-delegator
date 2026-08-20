@@ -1,0 +1,10 @@
+schema_version: 1
+sources:
+- source_id: example
+  type: filesystem
+  tree_hash: c61f839e88b0e993f7b89f17de0536eaa90fa22c6646c00086b40c6abbcdb78f
+  skills:
+  - canonical_id: example/hello
+    runtime_name: hello
+    path: hello
+    sha256: d38c385a71ef3a3ef674f7b6e2d5d9713b1faa27f1a30f14738ad49aadd512ec

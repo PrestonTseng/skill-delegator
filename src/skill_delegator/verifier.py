@@ -9,6 +9,7 @@ import subprocess
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
+from skill_delegator.config_snapshot import assert_snapshot_current
 from skill_delegator.errors import SourceError
 from skill_delegator.inventory import hash_tree, inspect_skill, validate_snapshot_tree
 from skill_delegator.managed_state import TargetStateError, scan_target, target_fingerprint
@@ -459,13 +460,6 @@ def verify_state(desired: DesiredState, current: CurrentState) -> VerificationRe
     )
 
 
-_CONFIG_INPUTS = (
-    "authority.yaml",
-    "delegations.yaml",
-    "pool.yaml",
-    "skill-lock.yaml",
-    "sources.yaml",
-)
 _MAX_CONFIG_BYTES = 16 * 1024 * 1024
 _CONFIG_DIR_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
 if hasattr(os, "O_NOFOLLOW"):
@@ -562,28 +556,19 @@ def _read_config_input(
 
 
 def _lexical_inputs_match(
-    config_dir: Path, expected_identities: dict[str, _ConfigInputIdentity]
+    config_dir: Path,
+    expected_identities: dict[str, _ConfigInputIdentity],
+    expected_bytes: dict[str, bytes] | None = None,
 ) -> bool:
     try:
-        config_metadata = config_dir.lstat()
-        if not stat.S_ISDIR(config_metadata.st_mode):
-            return False
-        expected_parents = {identity[0] for identity in expected_identities.values()}
-        if expected_parents != {(config_metadata.st_dev, config_metadata.st_ino)}:
-            return False
-        for name, (_, expected_file) in expected_identities.items():
-            metadata = (config_dir / name).lstat()
-            if (
-                not stat.S_ISREG(metadata.st_mode)
-                or (
-                    metadata.st_dev,
-                    metadata.st_ino,
-                    metadata.st_size,
-                )
-                != expected_file
+        for name, expected_identity in expected_identities.items():
+            observed_identity: list[_ConfigInputIdentity] = []
+            payload = _read_config_input(config_dir, name, identity_out=observed_identity)
+            if observed_identity != [expected_identity] or (
+                expected_bytes is not None and payload != expected_bytes[name]
             ):
                 return False
-    except OSError:
+    except (KeyError, ValueError):
         return False
     return True
 
@@ -598,8 +583,10 @@ def _repository_commit(
 
     environment = os.environ.copy()
     environment["GIT_OPTIONAL_LOCKS"] = "0"
+    if expected_identities is not None and set(expected_identities) != set(current_inputs):
+        return None, False
     if expected_identities is not None and not _lexical_inputs_match(
-        config_dir, expected_identities
+        config_dir, expected_identities, current_inputs
     ):
         return None, False
     try:
@@ -636,7 +623,48 @@ def _repository_commit(
         return None, False
     if any(character not in "0123456789abcdef" for character in commit):
         return None, False
-    for name in _CONFIG_INPUTS:
+    delegation_paths = tuple(
+        (config_relative / name).as_posix()
+        for name in current_inputs
+        if name == "delegations.yaml" or name.startswith("delegations/")
+    )
+    try:
+        delegation_tree = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repository_root),
+                "ls-tree",
+                "-r",
+                "-z",
+                "--name-only",
+                commit,
+                "--",
+                (config_relative / "delegations.yaml").as_posix(),
+                (config_relative / "delegations").as_posix(),
+            ],
+            check=False,
+            capture_output=True,
+            timeout=2,
+            env=environment,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None, False
+    committed_delegation_paths = tuple(
+        sorted(
+            (
+                os.fsdecode(path)
+                for path in delegation_tree.stdout.rstrip(b"\0").split(b"\0")
+                if path
+            ),
+            key=os.fsencode,
+        )
+    )
+    if delegation_tree.returncode != 0 or committed_delegation_paths != tuple(
+        sorted(delegation_paths, key=os.fsencode)
+    ):
+        return None, False
+    for name in sorted(current_inputs, key=os.fsencode):
         relative = (config_relative / name).as_posix()
         try:
             entry = subprocess.run(
@@ -671,7 +699,7 @@ def _repository_commit(
         ):
             return None, False
     if expected_identities is not None and not _lexical_inputs_match(
-        config_dir, expected_identities
+        config_dir, expected_identities, current_inputs
     ):
         return None, False
     return commit, True
@@ -686,17 +714,16 @@ def bind_verification_evidence(
     """Bind byte, repository, authority, and exact-lock identities to a result."""
 
     config_dir = Path(os.path.abspath(config_dir))
-    current_inputs: dict[str, bytes] = {}
-    input_identities: dict[str, _ConfigInputIdentity] = {}
-    for name in _CONFIG_INPUTS:
-        identity: list[_ConfigInputIdentity] = []
-        current_inputs[name] = _read_config_input(config_dir, name, identity_out=identity)
-        input_identities[name] = identity[0]
-    if len({identity[0] for identity in input_identities.values()}) != 1:
-        raise ValueError("config directory identity changed during evidence binding")
+    snapshot = config.input_snapshot
+    if snapshot is None or snapshot.config_dir != config_dir:
+        raise ValueError("configuration snapshot unavailable")
+    assert_snapshot_current(snapshot)
+    input_names = snapshot.names
+    current_inputs = snapshot.bytes_by_name()
+    input_identities = snapshot.verifier_identities()
     hashes = tuple(
         ConfigFileHash(name, hashlib.sha256(current_inputs[name]).hexdigest())
-        for name in _CONFIG_INPUTS
+        for name in input_names
     )
     locked_sources: list[LockedSourceIdentity] = []
     fresh_trees = {item.source_id: item.sha256 for item in result.source_tree_evidence}
@@ -730,6 +757,7 @@ def bind_verification_evidence(
     commit, available = _repository_commit(
         config_dir, current_inputs, expected_identities=input_identities
     )
+    assert_snapshot_current(snapshot)
     return replace(
         result,
         authority_id=config.authority_id,

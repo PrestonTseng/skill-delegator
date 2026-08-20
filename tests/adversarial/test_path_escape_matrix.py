@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-from tests.fixture_safety import assert_before_mutation, copy_mutation_fixture
+from tests.fixture_safety import copy_mutation_fixture, run_cli
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 
@@ -17,13 +16,11 @@ def _example(tmp_path: Path) -> Path:
 
 
 def _run(project: Path, command: str, expected: int) -> subprocess.CompletedProcess[str]:
-    assert_before_mutation(project, project.parent, command)
-    result = subprocess.run(
-        [sys.executable, "-m", "skill_delegator.cli", command],
+    result = run_cli(
+        project / "config",
+        project.parent,
+        [command, "--config", str(project / "config")],
         cwd=project,
-        capture_output=True,
-        text=True,
-        check=False,
     )
     assert result.returncode == expected, (result.stdout, result.stderr)
     assert "Traceback" not in result.stderr

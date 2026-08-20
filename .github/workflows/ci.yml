@@ -8,8 +8,14 @@ permissions:
   contents: read
 
 jobs:
-  verify:
-    runs-on: ubuntu-latest
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -27,47 +33,7 @@ jobs:
         run: uv run --frozen --python 3.12 ruff check .
       - name: Compile Python files
         run: uv run --frozen --python 3.12 python -m compileall -q src tests
-      - name: Validate the safe example
-        run: uv run --frozen --python 3.12 skillctl validate
       - name: Test schema artifacts
         run: uv run --frozen --python 3.12 pytest -q tests/integration/test_schema_artifacts.py
       - name: Build release artifacts
         run: uv build --python 3.12
-
-  macos-native:
-    runs-on: macos-latest
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Install uv and Python
-        uses: astral-sh/setup-uv@557e51de59eb14aaaba2ed9621916900a91d50c6 # v6.6.1
-        with:
-          python-version: "3.12"
-      - name: Install locked dependencies
-        run: uv sync --locked --python 3.12
-      - name: Run the full test suite on macOS
-        run: uv run --frozen --python 3.12 pytest -q
-      - name: Check formatting on macOS
-        run: uv run --frozen --python 3.12 ruff format --check .
-      - name: Run Ruff on macOS
-        run: uv run --frozen --python 3.12 ruff check .
-      - name: Compile Python files on macOS
-        run: uv run --frozen --python 3.12 python -m compileall -q src tests
-      - name: Run the native macOS safe-example workflow
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run skillctl lock
-          uv run skillctl validate
-          uv run skillctl resolve --json > /tmp/skillctl-resolve.json
-          set +e
-          uv run skillctl plan --json > /tmp/skillctl-plan-first.json
-          first_plan=$?
-          set -e
-          test "$first_plan" -eq 1
-          uv run skillctl apply
-          uv run skillctl verify
-          uv run skillctl status --json > /tmp/skillctl-status.json
-          python3 -c 'import json; document=json.load(open("/tmp/skillctl-status.json")); assert document["result"] == "converged", document'
-          uv run skillctl plan --json > /tmp/skillctl-plan-second.json
-          uv run skillctl apply | grep -F "Already converged"

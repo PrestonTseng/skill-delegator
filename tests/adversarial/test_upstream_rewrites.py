@@ -7,6 +7,7 @@ import pytest
 import yaml
 
 from skill_delegator import cli
+from tests.fixture_safety import run_cli
 
 
 def git(repo: Path, *args: str) -> str:
@@ -64,7 +65,7 @@ def fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     }
     for name, document in documents.items():
         (config / name).write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
-    assert cli.main(["lock", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["lock", "--config", str(config)]) == 0
     return config, work, project / "target"
 
 
@@ -92,14 +93,18 @@ def test_check_and_update_do_not_apply_stage_or_change_repository_history(
         raise AssertionError("update must not apply")
 
     monkeypatch.setattr(cli, "apply_plan", forbidden_apply)
-    assert cli.main(["update", "--check", "--config", str(config)]) == 1
+    assert (
+        run_cli(config, config.parent.parent, ["update", "--check", "--config", str(config)]) == 1
+    )
     capsys.readouterr()
     assert git(project, "status", "--porcelain") == ""
     assert git(project, "rev-parse", "HEAD") == original_head
     assert git(project, "write-tree") == original_index
     assert not target.exists()
 
-    assert cli.main(["update", "upstream", "--config", str(config)]) == 0
+    assert (
+        run_cli(config, config.parent.parent, ["update", "upstream", "--config", str(config)]) == 0
+    )
     capsys.readouterr()
     assert git(project, "diff", "--name-only") == "config/skill-lock.yaml"
     assert git(project, "diff", "--cached", "--name-only") == ""

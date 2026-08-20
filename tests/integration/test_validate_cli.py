@@ -2,22 +2,22 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import yaml
 
+from tests.fixture_safety import run_cli as run_production_cli
+
 REPOSITORY_ROOT = Path(__file__).parents[2]
-EXAMPLE_CONFIG = REPOSITORY_ROOT / "config"
+EXAMPLE_CONFIG = REPOSITORY_ROOT / "tests" / "fixtures" / "safe-config"
 
 
 def run_cli(config_dir: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-m", "skill_delegator.cli", "validate", "--config", str(config_dir)],
+    return run_production_cli(
+        config_dir,
+        config_dir.parent.parent,
+        ["validate", "--config", str(config_dir)],
         cwd=REPOSITORY_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
     )
 
 
