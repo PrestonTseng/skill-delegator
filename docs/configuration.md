@@ -202,12 +202,16 @@ schema_version: 1
 target:
   id: reviewer
   root: /opt/agent/skills
+  grants:
+    - shared/code-review
 
 # delegations/worker.yaml
 schema_version: 1
 target:
   id: worker
   root: /opt/agent/skills
+  grants:
+    - shared/testing
 ```
 
 Deploy the complete configuration to both containers. Run `--target reviewer` only in container A
