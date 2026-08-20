@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import tarfile
 import zipfile
@@ -62,3 +63,23 @@ def test_release_artifact_bytes_match_source_wheel_and_sdist(tmp_path: Path) -> 
             stream = sdist_archive.extractfile(sdist_members[sdist_name])
             assert stream is not None
             assert stream.read() == source.read_bytes()
+
+
+def test_singular_target_schema_reuses_the_legacy_target_definition() -> None:
+    project = Path(__file__).parents[2]
+    singular = json.loads((project / "schemas" / "target-delegation.schema.json").read_text())
+    legacy = json.loads((project / "schemas" / "delegations.schema.json").read_text())
+
+    assert singular == {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "target-delegation.schema.json",
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["schema_version", "target"],
+        "properties": {
+            "schema_version": {"const": 1},
+            "target": {"$ref": "delegations.schema.json#/$defs/target"},
+        },
+    }
+    assert legacy["properties"]["targets"]["items"] == {"$ref": "#/$defs/target"}
+    assert legacy["$defs"]["target"]

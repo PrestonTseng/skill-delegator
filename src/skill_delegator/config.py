@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import os
+import stat
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
+from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
 from skill_delegator.errors import ConfigError
-from skill_delegator.identifiers import is_canonical_id
+from skill_delegator.identifiers import is_canonical_id, is_source_id
 from skill_delegator.models import AuthorityConfig, PoolSpec, SourceSpec, TargetSpec
-from skill_delegator.schema_validation import schema_error_location, schema_errors
+from skill_delegator.schema_validation import schema_error_location, schema_errors, schema_text
 
 _CONFIG_SCHEMAS = {
     "authority.yaml": "authority.schema.json",
@@ -80,6 +84,114 @@ def _load_document(config_dir: Path, filename: str, schema_name: str) -> dict[st
     return document
 
 
+def _target_schema_errors(document: Any) -> tuple[Any, ...]:
+    """Validate the singular schema with its sibling schema registered locally."""
+
+    schema = json.loads(schema_text("target-delegation.schema.json"))
+    legacy_schema = json.loads(schema_text("delegations.schema.json"))
+    registry = Registry().with_resource(
+        "delegations.schema.json", Resource.from_contents(legacy_schema)
+    )
+    return tuple(
+        sorted(
+            Draft202012Validator(schema, registry=registry).iter_errors(document),
+            key=lambda error: (
+                tuple(str(part) for part in error.absolute_path),
+                tuple(str(part) for part in error.absolute_schema_path),
+                str(error.validator),
+            ),
+        )
+    )
+
+
+def _load_target_document(config_dir: Path, filename: str) -> dict[str, Any]:
+    path = config_dir / filename
+    try:
+        if path.is_symlink():
+            raise ConfigError(f"{filename}: delegation file must not be a symlink")
+        text = path.read_text(encoding="utf-8")
+    except UnicodeError as error:
+        raise ConfigError(f"{filename}: invalid UTF-8: {error}") from error
+    except OSError as error:
+        raise ConfigError(f"{filename}: cannot read file: {error}") from error
+    try:
+        document = yaml.load(text, Loader=_UniqueKeySafeLoader)
+    except yaml.YAMLError as error:
+        raise ConfigError(f"{filename}: invalid YAML: {error}") from error
+
+    errors = _target_schema_errors(document)
+    if errors:
+        error = errors[0]
+        location = schema_error_location(error)
+        raise ConfigError(f"{filename} at {location}: {error.message}")
+    return document
+
+
+def _delegation_input_names(config_dir: Path) -> tuple[str, tuple[str, ...]]:
+    """Discover exactly one delegation form without following symlinks."""
+
+    legacy = config_dir / "delegations.yaml"
+    directory = config_dir / "delegations"
+    legacy_exists = os.path.lexists(legacy)
+    directory_exists = os.path.lexists(directory)
+
+    if legacy_exists and directory_exists:
+        raise ConfigError("delegations.yaml and delegations/ cannot both be present")
+    if not legacy_exists and not directory_exists:
+        raise ConfigError("delegations.yaml or delegations/ must be present")
+
+    if legacy_exists:
+        try:
+            mode = legacy.lstat().st_mode
+        except OSError as error:
+            raise ConfigError(f"delegations.yaml: cannot inspect file: {error}") from error
+        if stat.S_ISLNK(mode):
+            raise ConfigError("delegations.yaml: delegation file must not be a symlink")
+        if not stat.S_ISREG(mode):
+            raise ConfigError("delegations.yaml: delegation input must be a regular file")
+        return "single", ("delegations.yaml",)
+
+    try:
+        directory_mode = directory.lstat().st_mode
+    except OSError as error:
+        raise ConfigError(f"delegations/: cannot inspect directory: {error}") from error
+    if stat.S_ISLNK(directory_mode):
+        raise ConfigError("delegations/: delegation directory must not be a symlink")
+    if not stat.S_ISDIR(directory_mode):
+        raise ConfigError("delegations/: delegation input must be a directory")
+
+    try:
+        entries = sorted(os.scandir(directory), key=lambda entry: os.fsencode(entry.name))
+    except OSError as error:
+        raise ConfigError(f"delegations/: cannot read directory: {error}") from error
+    if not entries:
+        raise ConfigError("delegations/: delegation directory must not be empty")
+
+    filenames: list[str] = []
+    for entry in entries:
+        filename = f"delegations/{entry.name}"
+        if entry.is_symlink():
+            raise ConfigError(f"{filename}: delegation entry must not be a symlink")
+        if not entry.is_file(follow_symlinks=False):
+            raise ConfigError(f"{filename}: delegation entry must be a regular YAML file")
+        if not entry.name.endswith(".yaml"):
+            raise ConfigError(f"{filename}: delegation filename must end in .yaml")
+        stem = entry.name.removesuffix(".yaml")
+        if not is_source_id(stem):
+            raise ConfigError(f"{filename}: unsafe delegation filename")
+        filenames.append(filename)
+    return "multiple", tuple(filenames)
+
+
+def config_input_names(config_dir: Path) -> tuple[str, ...]:
+    """Return deterministic POSIX-relative names of desired-state inputs."""
+
+    config_dir = config_dir.resolve(strict=False)
+    _, delegation_names = _delegation_input_names(config_dir)
+    common = tuple(name for name in _CONFIG_SCHEMAS if name != "delegations.yaml")
+    return tuple(sorted((*common, *delegation_names), key=os.fsencode))
+
+
 def _ensure_unique_ids(items: list[dict[str, Any]], kind: str) -> None:
     seen: set[str] = set()
     for item in items:
@@ -140,21 +252,38 @@ def load_config(
     """Load and validate one authority without reading source or target contents."""
 
     config_dir = config_dir.resolve(strict=False)
+    delegation_mode, delegation_names = _delegation_input_names(config_dir)
     documents = {
         filename: _load_document(config_dir, filename, schema)
         for filename, schema in _CONFIG_SCHEMAS.items()
+        if filename != "delegations.yaml"
         if require_lock or filename != "skill-lock.yaml"
     }
+    if delegation_mode == "single":
+        delegation_document = _load_document(
+            config_dir, "delegations.yaml", "delegations.schema.json"
+        )
+        target_records = [
+            (entry, "delegations.yaml", "shared")
+            for entry in delegation_document["targets"]
+        ]
+    else:
+        target_records = []
+        for filename in delegation_names:
+            document = _load_target_document(config_dir, filename)
+            entry = document["target"]
+            target_records.append((entry, filename, filename))
+
     authority = documents["authority.yaml"]["authority"]
     source_entries = documents["sources.yaml"]["sources"]
     pool_entries = documents["pool.yaml"]["skills"]
-    target_entries = documents["delegations.yaml"]["targets"]
 
     for index, entry in enumerate(source_entries):
         for field in ("location", "skill_root"):
             _validate_path_string(entry[field], "sources.yaml", f"sources.{index}.{field}")
-    for index, entry in enumerate(target_entries):
-        _validate_path_string(entry["root"], "delegations.yaml", f"targets.{index}.root")
+    for index, (entry, filename, _) in enumerate(target_records):
+        field = f"targets.{index}.root" if delegation_mode == "single" else "target.root"
+        _validate_path_string(entry["root"], filename, field)
     if "skill-lock.yaml" in documents:
         for source_index, locked_source in enumerate(documents["skill-lock.yaml"]["sources"]):
             for skill_index, locked_skill in enumerate(locked_source["skills"]):
@@ -165,11 +294,23 @@ def load_config(
                 )
 
     _ensure_unique_ids(source_entries, "source")
-    _ensure_unique_ids(target_entries, "target")
+    seen_target_ids: set[str] = set()
+    for entry, filename, _ in target_records:
+        if entry["id"] in seen_target_ids:
+            raise ConfigError(f"{filename}: duplicate target id: {entry['id']}")
+        seen_target_ids.add(entry["id"])
+    if delegation_mode == "multiple":
+        for entry, filename, _ in target_records:
+            expected_id = Path(filename).stem
+            if entry["id"] != expected_id:
+                raise ConfigError(
+                    f"{filename}: target id {entry['id']!r} must match filename stem "
+                    f"{expected_id!r}"
+                )
 
     _validate_canonical_ids(pool_entries, "pool.yaml")
-    for target in target_entries:
-        _validate_canonical_ids(target["grants"], "delegations.yaml")
+    for target, filename, _ in target_records:
+        _validate_canonical_ids(target["grants"], filename)
 
     source_ids = {entry["id"] for entry in source_entries}
     for canonical_id in pool_entries:
@@ -178,11 +319,11 @@ def load_config(
             raise ConfigError(f"pool.yaml: unknown source id in pool entry: {canonical_id}")
 
     pool = set(pool_entries)
-    for target in target_entries:
+    for target, filename, _ in target_records:
         unknown = set(target["grants"]) - pool
         if unknown:
             raise ConfigError(
-                f"delegations.yaml: target {target['id']} grants skills outside pool: "
+                f"{filename}: target {target['id']} grants skills outside pool: "
                 f"{', '.join(sorted(unknown))}"
             )
 
@@ -192,17 +333,21 @@ def load_config(
     if fixture_policy == "safe-main-example":
         repository_root = config_dir.parent
         safe_parent = _lexical_absolute(repository_root, "var/example-targets")
-        for target in target_entries:
+        for target, filename, _ in target_records:
             raw_root = Path(target["root"])
             if raw_root.is_absolute():
-                raise ConfigError("main example target roots must be relative")
+                raise ConfigError(f"{filename}: main example target roots must be relative")
             lexical_root = _lexical_absolute(config_dir, raw_root)
             if not lexical_root.is_relative_to(safe_parent):
                 raise ConfigError(
-                    "main example target roots must resolve under var/example-targets/"
+                    f"{filename}: main example target roots must resolve under "
+                    "var/example-targets/"
                 )
             if target_scope is None or target["id"] == target_scope:
-                _reject_symlink_components(repository_root, lexical_root)
+                try:
+                    _reject_symlink_components(repository_root, lexical_root)
+                except ConfigError as error:
+                    raise ConfigError(f"{filename}: {error}") from error
 
     sources = tuple(
         SourceSpec(
@@ -223,8 +368,11 @@ def load_config(
             id=entry["id"],
             root=_lexical_absolute(config_dir, entry["root"]),
             grants=tuple(entry["grants"]),
+            deployment_scope=deployment_scope,
         )
-        for entry in target_entries
+        for entry, _, deployment_scope in sorted(
+            target_records, key=lambda record: record[0]["id"]
+        )
     )
     return AuthorityConfig(
         authority_id=authority["id"],
@@ -234,4 +382,5 @@ def load_config(
         pool=tuple(PoolSpec(canonical_id=value) for value in pool_entries),
         targets=targets,
         cache_root=config_dir.parent / "var" / "cache" / "sources",
+        delegation_mode=delegation_mode,
     )

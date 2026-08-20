@@ -35,6 +35,7 @@ class TargetSpec:
     id: str
     root: Path
     grants: tuple[str, ...]
+    deployment_scope: str = "shared"
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class AuthorityConfig:
     pool: tuple[PoolSpec, ...]
     targets: tuple[TargetSpec, ...]
     cache_root: Path | None = None
+    delegation_mode: str = "single"
 
 
 @dataclass(frozen=True)
