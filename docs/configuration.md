@@ -1,6 +1,14 @@
 # Configuration Reference
 
-One authority uses one directory with five YAML files.
+One authority uses four shared YAML files (`authority.yaml`, `sources.yaml`, `pool.yaml`, and
+`skill-lock.yaml`) plus exactly one delegation format:
+
+- legacy: one aggregate `delegations.yaml`; or
+- per-target: one or more singular `delegations/<target-id>.yaml` files.
+
+`delegations.yaml` and `delegations/` are mutually exclusive. The loader fails closed if both or
+neither exists. The legacy format remains supported; use the per-target format when target
+declarations are deployed independently.
 
 All files use `schema_version: 1`. Strict JSON Schema rules reject unknown fields and duplicate YAML keys.
 
@@ -117,6 +125,28 @@ The current user needs write access to the target and each missing parent direct
 
 For production, use a dedicated target root and the least required privilege.
 
+## `delegations/<target-id>.yaml`
+
+The singular per-target format uses one document for each target:
+
+```yaml
+# delegations/worker.yaml
+schema_version: 1
+target:
+  id: worker
+  root: /opt/agent/skills
+  grants:
+    - shared/code-review
+```
+
+Each file is validated against `target-delegation.schema.json`. That schema reuses the exact
+target definition from `delegations.schema.json`, so target IDs, roots, and grants have the same
+validation rules in both formats. The filename must be `<target.id>.yaml`; only regular `.yaml`
+files are accepted. Files are discovered in filesystem-byte order, and duplicate target IDs fail
+closed with the responsible filename.
+
+Do not keep an empty `delegations/` directory and do not place `delegations.yaml` beside it.
+
 ## `skill-lock.yaml`
 
 Run this command to generate the file:
@@ -158,6 +188,51 @@ The target link uses the canonical artifact ID, not the runtime name:
 <target-root>/<source-id>/<path-relative-to-skill-root>
 ```
 
+## Scoped and Unscoped Root Semantics
+
+`plan`, `apply`, `verify`, and `status` accept `--target <exact-id>`. A scoped command resolves the
+whole authority configuration but scans, fingerprints, or changes only the selected target. With
+per-target declarations, equal or nested configured roots are allowed for a scoped command. This
+is intended for separately deployed containers whose private mounts have the same in-container
+path:
+
+```yaml
+# delegations/reviewer.yaml
+schema_version: 1
+target:
+  id: reviewer
+  root: /opt/agent/skills
+
+# delegations/worker.yaml
+schema_version: 1
+target:
+  id: worker
+  root: /opt/agent/skills
+```
+
+Deploy the complete configuration to both containers. Run `--target reviewer` only in container A
+and `--target worker` only in container B. Equal path strings are safe here because each container
+supplies a distinct filesystem namespace and each invocation touches one deployment scope.
+
+Without `--target`, a per-target command is authority-wide. It requires every configured target
+root to be disjoint. Equal roots and parent/child roots fail before any target scan or mutation;
+distinct roots are processed normally. Legacy aggregate declarations retain their existing
+whole-authority collision rules.
+
+## Deterministic Configuration Provenance and Receipts
+
+`verify` and `status` hash the complete configuration input set. The evidence contains relative
+names and SHA-256 values for the four shared files and either the single `delegations.yaml` or
+every singular `delegations/<target-id>.yaml`. A target-scoped operation still binds every config
+file, while its target fingerprints and operation counts cover only the selected target.
+
+The evidence also identifies every locked source and records the exact repository commit when it
+is available (or explicitly records that it is unavailable). Configuration names and evidence
+collections are deterministically ordered. A converged verification receipt is canonical JSON;
+its filename is the SHA-256 of its bytes. Repeating verification against identical repository,
+configuration, source, and selected-target evidence therefore returns the same receipt path and
+byte-identical content.
+
 ## Generated State
 
 The tool can create these paths:
@@ -174,7 +249,8 @@ Do not commit generated caches, example targets, transaction data, or receipts a
 
 ## First Configuration Workflow
 
-After you edit the four owner-maintained files, generate the exact lock:
+After you edit the three shared owner-maintained files and one delegation form, generate the exact
+lock:
 
 ```console
 uv run skillctl lock --config my-config
@@ -183,7 +259,8 @@ uv run skillctl resolve --json --config my-config
 uv run skillctl plan --json --config my-config
 ```
 
-Review all five files and the complete plan. Commit the accepted configuration before you apply it.
+Review every shared and delegation file and the complete plan. Commit the accepted configuration
+before you apply it.
 
 Then run:
 
@@ -207,3 +284,19 @@ The selector is available on `plan`, `apply`, `verify`, and `status`. An unknown
 `apply` recomputes and immediately executes a new plan. It does not consume the displayed `plan` output.
 
 CAUTION: `--yes` authorizes each REMOVE in this new plan. Use it only when you accept this V1 limit.
+
+## Migrating from Legacy to Per-Target Files
+
+1. Save the accepted `skillctl resolve --json --config my-config` output for the legacy tree.
+2. In a temporary review tree, create `delegations/<target-id>.yaml` for every entry in
+   `delegations.yaml`. Change only the envelope from top-level `targets` to one top-level `target`
+   per file; preserve each target object exactly, and make every filename stem equal its ID.
+3. Remove `delegations.yaml`. Never run the CLI while both forms exist; mixed form is rejected.
+4. Run `skillctl validate --config my-config` and `skillctl resolve --json --config my-config`.
+   Compare the new resolved JSON with the saved legacy output. Target ordering and JSON output are
+   deterministic, so an unchanged authority resolves identically.
+5. Commit and deploy the complete conversion as one change. Do not deploy an empty or partial
+   `delegations/` directory.
+6. In each target's isolated environment, run `plan --target <target-id>`, review the plan, then
+   run scoped `apply`, `verify`, and `status`. Use unscoped operation only when all target roots are
+   disjoint in that environment.

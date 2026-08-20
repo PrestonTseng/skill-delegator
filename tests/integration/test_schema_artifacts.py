@@ -20,6 +20,7 @@ def test_release_artifact_bytes_match_source_wheel_and_sdist(tmp_path: Path) -> 
     wheel = next(dist.glob("*.whl"))
     sdist = next(dist.glob("*.tar.gz"))
     schemas = sorted((project / "schemas").glob("*.schema.json"))
+    assert project / "schemas" / "target-delegation.schema.json" in schemas
     config_files = sorted(path for path in (project / "config").rglob("*") if path.is_file())
     bundled = [
         *schemas,
@@ -33,6 +34,10 @@ def test_release_artifact_bytes_match_source_wheel_and_sdist(tmp_path: Path) -> 
 
     with zipfile.ZipFile(wheel) as wheel_archive, tarfile.open(sdist, "r:gz") as sdist_archive:
         sdist_members = {member.name: member for member in sdist_archive.getmembers()}
+        assert "skill_delegator/schemas/target-delegation.schema.json" in wheel_archive.namelist()
+        assert any(
+            name.endswith("/schemas/target-delegation.schema.json") for name in sdist_members
+        )
         forbidden_parts = (
             "/.superpowers/",
             "/var/cache/",

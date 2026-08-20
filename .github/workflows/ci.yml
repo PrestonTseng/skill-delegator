@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  linux:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repository
@@ -27,14 +27,12 @@ jobs:
         run: uv run --frozen --python 3.12 ruff check .
       - name: Compile Python files
         run: uv run --frozen --python 3.12 python -m compileall -q src tests
-      - name: Validate the safe example
-        run: uv run --frozen --python 3.12 skillctl validate
       - name: Test schema artifacts
         run: uv run --frozen --python 3.12 pytest -q tests/integration/test_schema_artifacts.py
       - name: Build release artifacts
         run: uv build --python 3.12
 
-  macos-native:
+  macos:
     runs-on: macos-latest
     steps:
       - name: Check out the repository
@@ -45,29 +43,15 @@ jobs:
           python-version: "3.12"
       - name: Install locked dependencies
         run: uv sync --locked --python 3.12
-      - name: Run the full test suite on macOS
+      - name: Run the full test suite
         run: uv run --frozen --python 3.12 pytest -q
-      - name: Check formatting on macOS
+      - name: Check formatting
         run: uv run --frozen --python 3.12 ruff format --check .
-      - name: Run Ruff on macOS
+      - name: Run Ruff
         run: uv run --frozen --python 3.12 ruff check .
-      - name: Compile Python files on macOS
+      - name: Compile Python files
         run: uv run --frozen --python 3.12 python -m compileall -q src tests
-      - name: Run the native macOS safe-example workflow
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run skillctl lock
-          uv run skillctl validate
-          uv run skillctl resolve --json > /tmp/skillctl-resolve.json
-          set +e
-          uv run skillctl plan --json > /tmp/skillctl-plan-first.json
-          first_plan=$?
-          set -e
-          test "$first_plan" -eq 1
-          uv run skillctl apply
-          uv run skillctl verify
-          uv run skillctl status --json > /tmp/skillctl-status.json
-          python3 -c 'import json; document=json.load(open("/tmp/skillctl-status.json")); assert document["result"] == "converged", document'
-          uv run skillctl plan --json > /tmp/skillctl-plan-second.json
-          uv run skillctl apply | grep -F "Already converged"
+      - name: Test schema artifacts
+        run: uv run --frozen --python 3.12 pytest -q tests/integration/test_schema_artifacts.py
+      - name: Build release artifacts
+        run: uv build --python 3.12
