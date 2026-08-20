@@ -6,9 +6,10 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
-from skill_delegator import receipts
+from skill_delegator import cli, receipts
 from tests.fixture_safety import run_cli
 
 
@@ -142,6 +143,63 @@ def _snapshot(root: Path) -> tuple[tuple[str, str, str], ...]:
         else:
             records.append((relative, "dir", ""))
     return tuple(records)
+
+
+@pytest.mark.parametrize("command", ("verify", "status"))
+@pytest.mark.parametrize("replacement", ("changed-bytes", "same-bytes"))
+def test_verification_fails_closed_when_config_snapshot_is_replaced_after_target_scan(
+    tmp_path: Path,
+    capsys,
+    monkeypatch,
+    command: str,
+    replacement: str,
+) -> None:
+    project = tmp_path / "project"
+    config = _write_config(project)
+    _use_per_target_delegations(config, "worker")
+    capsys.readouterr()
+    assert (
+        run_cli(
+            config,
+            config.parent.parent,
+            ["apply", "--target", "worker", "--config", str(config)],
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    declaration = config / "delegations" / "worker.yaml"
+    original_verify_state = cli.verify_state
+
+    def replace_after_verification(*args, **kwargs):
+        result = original_verify_state(*args, **kwargs)
+        if replacement == "changed-bytes":
+            document = yaml.safe_load(declaration.read_text(encoding="utf-8"))
+            document["target"]["root"] = "../targets/substituted"
+            replacement_bytes = yaml.safe_dump(document, sort_keys=False).encode()
+        else:
+            replacement_bytes = declaration.read_bytes()
+        temporary = declaration.with_suffix(".replacement")
+        temporary.write_bytes(replacement_bytes)
+        os.replace(temporary, declaration)
+        return result
+
+    monkeypatch.setattr(cli, "verify_state", replace_after_verification)
+
+    assert (
+        run_cli(
+            config,
+            config.parent.parent,
+            [command, "--target", "worker", "--config", str(config)],
+        )
+        == 2
+    )
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == f"{command.title()} error: configuration snapshot changed\n"
+    receipts_root = project / "var" / "receipts"
+    assert not receipts_root.exists()
+    assert not tuple(project.rglob("*.replacement"))
 
 
 def test_verify_writes_deterministic_receipt_and_status_is_strictly_read_only(

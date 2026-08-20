@@ -256,9 +256,8 @@ def test_per_target_directory_replacement_after_discovery_cannot_substitute_byte
 
     monkeypatch.setattr(config_module, "_delegation_input_names", replace_directory_after_discovery)
 
-    loaded = load_config(config)
-
-    assert loaded.targets[0].root == tmp_path / "targets" / "worker"
+    with pytest.raises(ConfigError, match="configuration snapshot changed"):
+        load_config(config)
 
 
 def test_per_target_entry_added_after_read_changes_entry_set(

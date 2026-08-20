@@ -129,6 +129,7 @@ def test_generic_multi_file_scoped_apply_preserves_every_unselected_root(
     target_ids = tuple(target["id"] for target in resolved["targets"])
     assert set(target_ids) == set(TARGET_IDS)
     roots = {target["id"]: Path(target["root"]) for target in resolved["targets"]}
+    link_counts = {target["id"]: len(target["links"]) for target in resolved["targets"]}
 
     for selected_id in target_ids:
         unselected_before = {
@@ -137,8 +138,10 @@ def test_generic_multi_file_scoped_apply_preserves_every_unselected_root(
             if target_id != selected_id
         }
 
+        expected_links = link_counts[selected_id]
+        change_word = "change" if expected_links == 1 else "changes"
         assert _run(project, "apply", "--target", selected_id).stdout == (
-            "Applied 1 change to 1 target\n"
+            f"Applied {expected_links} {change_word} to 1 target\n"
         )
         assert {
             target_id: _snapshot(root)
@@ -147,20 +150,22 @@ def test_generic_multi_file_scoped_apply_preserves_every_unselected_root(
         } == unselected_before
 
         verification = _run(project, "verify", "--target", selected_id)
-        assert verification.stdout.startswith("converged: 1/1 links verified across 1 target\n")
+        assert verification.stdout.startswith(
+            f"converged: {expected_links}/{expected_links} links verified across 1 target\n"
+        )
         receipt_path = _receipt_path(verification.stdout)
         receipt_bytes = receipt_path.read_bytes()
         receipt = json.loads(receipt_bytes)
         assert receipt_path.name == f"{hashlib.sha256(receipt_bytes).hexdigest()}.json"
         assert receipt["operation_summary"]["desired_targets"] == 1
-        assert receipt["operation_summary"]["desired_links"] == 1
+        assert receipt["operation_summary"]["desired_links"] == expected_links
         assert [item["target_id"] for item in receipt["target_fingerprints"]] == [selected_id]
         assert receipt["config_hashes"] == _expected_config_hashes(project)
 
         status = json.loads(_run(project, "status", "--json", "--target", selected_id).stdout)
         assert status["result"] == "converged"
         assert status["operation_summary"]["desired_targets"] == 1
-        assert status["operation_summary"]["verified_links"] == 1
+        assert status["operation_summary"]["verified_links"] == expected_links
         assert [item["target_id"] for item in status["target_fingerprints"]] == [selected_id]
         assert status["config_hashes"] == _expected_config_hashes(project)
 
@@ -172,12 +177,22 @@ def test_generic_multi_file_scoped_apply_preserves_every_unselected_root(
 
 def test_generic_multi_file_distinct_roots_apply_unscoped(tmp_path: Path) -> None:
     project = _project(tmp_path)
+    resolved = json.loads(_run(project, "resolve", "--json").stdout)
+    target_count = len(resolved["targets"])
+    link_count = sum(len(target["links"]) for target in resolved["targets"])
+    target_word = "target" if target_count == 1 else "targets"
+    change_word = "change" if link_count == 1 else "changes"
 
-    assert _run(project, "apply").stdout == "Applied 3 changes to 3 targets\n"
+    assert _run(project, "apply").stdout == (
+        f"Applied {link_count} {change_word} to {target_count} {target_word}\n"
+    )
     verification = _run(project, "verify")
-    assert verification.stdout.startswith("converged: 3/3 links verified across 3 targets\n")
+    assert verification.stdout.startswith(
+        f"converged: {link_count}/{link_count} links verified across {target_count} {target_word}\n"
+    )
     receipt = json.loads(_receipt_path(verification.stdout).read_bytes())
-    assert receipt["operation_summary"]["desired_targets"] == 3
+    assert receipt["operation_summary"]["desired_targets"] == target_count
+    assert receipt["operation_summary"]["desired_links"] == link_count
     assert {item["target_id"] for item in receipt["target_fingerprints"]} == set(TARGET_IDS)
 
 

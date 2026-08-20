@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from skill_delegator.config_snapshot import ConfigInputSnapshot
 
 
 @dataclass(frozen=True)
@@ -50,6 +54,7 @@ class AuthorityConfig:
     targets: tuple[TargetSpec, ...]
     cache_root: Path | None = None
     delegation_mode: str = "single"
+    input_snapshot: ConfigInputSnapshot | None = None
 
 
 @dataclass(frozen=True)

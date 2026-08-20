@@ -280,7 +280,7 @@ The tool preserves unmanaged target content. A REMOVE also requires a valid mana
 
 | Command | Purpose | Target write |
 |---|---|---:|
-| `validate` | Validate all five configuration files. | No |
+| `validate` | Validate the complete authority configuration. | No |
 | `lock` | Resolve sources and write the exact lock. | No |
 | `resolve --json` | Show the complete authority desired state. | No |
 | `plan [--json] [--target TARGET]` | Compare desired and current state for all targets or one target. | No |

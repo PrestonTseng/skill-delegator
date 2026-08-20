@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 import yaml
 
 from skill_delegator.config import load_config
+from skill_delegator.config_snapshot import ConfigInputSnapshot, assert_snapshot_current
 from skill_delegator.errors import ConfigError, SourceError, UpdateError
 from skill_delegator.identifiers import is_source_id
 from skill_delegator.lockfile import build_lock, write_lock_atomic
@@ -28,6 +29,7 @@ from skill_delegator.models import (
     ReconciliationPlan,
     SkillLock,
     TargetSpec,
+    VerificationResult,
 )
 from skill_delegator.planner import build_plan, plan_json, plan_text
 from skill_delegator.receipts import ReceiptError, receipt_document, write_receipt
@@ -113,8 +115,10 @@ def _select_desired_target(state: DesiredState, target_id: str | None) -> Desire
     )
 
 
-def _load_validated_lock(config_dir: Path) -> SkillLock:
-    document = yaml.safe_load((config_dir / "skill-lock.yaml").read_text(encoding="utf-8"))
+def _load_validated_lock(config: AuthorityConfig) -> SkillLock:
+    if config.input_snapshot is None:
+        raise ValueError("configuration snapshot unavailable")
+    document = yaml.safe_load(config.input_snapshot.bytes_for("skill-lock.yaml"))
     return SkillLock(
         schema_version=document["schema_version"],
         sources=tuple(
@@ -194,19 +198,23 @@ def _render_plan(plan: ReconciliationPlan, *, json_output: bool) -> None:
     sys.stdout.write(plan_json(plan) if json_output else plan_text(plan))
 
 
-def _fresh_verification(config_dir: Path, target_id: str | None = None):
+def _fresh_verification(
+    config_dir: Path, target_id: str | None = None
+) -> tuple[VerificationResult, ConfigInputSnapshot]:
     config_dir = config_dir.resolve(strict=False)
     config = load_config(config_dir, target_scope=target_id)
     _selected_targets(config, target_id)
     if target_id is None:
         ensure_unscoped_roots_disjoint(config)
-    lock = _load_validated_lock(config_dir)
+    lock = _load_validated_lock(config)
     desired = resolve_desired_state(config, lock)
     desired = _select_desired_target(desired, target_id)
     cache_root = config_dir.parent / "var" / "cache" / "sources"
     desired = _bind_expected_sources(desired, lock, cache_root)
     result = verify_state(desired, CurrentState((), cache_root))
-    return bind_verification_evidence(result, config_dir, config, lock)
+    bound = bind_verification_evidence(result, config_dir, config, lock)
+    assert config.input_snapshot is not None
+    return bound, config.input_snapshot
 
 
 def _render_verification(result, *, json_output: bool) -> None:
@@ -306,7 +314,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             config_dir = args.config.resolve(strict=False)
             config = load_config(config_dir)
-            old_lock = _load_validated_lock(config_dir)
+            old_lock = _load_validated_lock(config)
             if args.check:
                 updates = check_updates(config, old_lock)
                 _render_update_checks(updates, json_output=args.json)
@@ -364,7 +372,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             config_dir = args.config.resolve(strict=False)
             config = load_config(config_dir)
-            lock = _load_validated_lock(config_dir)
+            lock = _load_validated_lock(config)
             state = resolve_desired_state(config, lock)
         except (ConfigError, OSError, ResolutionError) as error:
             print(f"Resolve error: {error}", file=sys.stderr)
@@ -378,7 +386,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             selected_targets = _selected_targets(config, args.target)
             if args.target is None:
                 ensure_unscoped_roots_disjoint(config)
-            lock = _load_validated_lock(config_dir)
+            lock = _load_validated_lock(config)
             desired = resolve_desired_state(config, lock)
             desired = _select_desired_target(desired, args.target)
             cache_root = config_dir.parent / "var" / "cache" / "sources"
@@ -406,7 +414,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             selected_targets = _selected_targets(config, args.target)
             if args.target is None:
                 ensure_unscoped_roots_disjoint(config)
-            lock = _load_validated_lock(config_dir)
+            lock = _load_validated_lock(config)
             desired = resolve_desired_state(config, lock)
             desired = _select_desired_target(desired, args.target)
             cache_root = config_dir.parent / "var" / "cache" / "sources"
@@ -445,7 +453,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command in {"verify", "status"}:
         label = "Verify" if args.command == "verify" else "Status"
         try:
-            result = _fresh_verification(args.config, args.target)
+            result, snapshot = _fresh_verification(args.config, args.target)
+            if args.command == "status" or not result.converged:
+                assert_snapshot_current(snapshot)
         except TargetSelectionError as error:
             print(f"Target error: {error}", file=sys.stderr)
             return 2
@@ -459,10 +469,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             _render_verification(result, json_output=False)
             return _verification_exit_code(result)
         try:
+            assert_snapshot_current(snapshot)
             receipt = write_receipt(
                 result, args.config.resolve(strict=False).parent / "var" / "receipts"
             )
-        except ReceiptError as error:
+        except (ReceiptError, ValueError) as error:
             print(f"Verify blocked: {error}", file=sys.stderr)
             return 3
         _render_verification(result, json_output=False)

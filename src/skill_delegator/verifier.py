@@ -9,7 +9,7 @@ import subprocess
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
-from skill_delegator.config import config_input_names
+from skill_delegator.config_snapshot import assert_snapshot_current
 from skill_delegator.errors import SourceError
 from skill_delegator.inventory import hash_tree, inspect_skill, validate_snapshot_tree
 from skill_delegator.managed_state import TargetStateError, scan_target, target_fingerprint
@@ -714,17 +714,13 @@ def bind_verification_evidence(
     """Bind byte, repository, authority, and exact-lock identities to a result."""
 
     config_dir = Path(os.path.abspath(config_dir))
-    input_names = config_input_names(config_dir)
-    current_inputs: dict[str, bytes] = {}
-    input_identities: dict[str, _ConfigInputIdentity] = {}
-    for name in input_names:
-        identity: list[_ConfigInputIdentity] = []
-        current_inputs[name] = _read_config_input(config_dir, name, identity_out=identity)
-        input_identities[name] = identity[0]
-    if config_input_names(config_dir) != input_names or not _lexical_inputs_match(
-        config_dir, input_identities, current_inputs
-    ):
-        raise ValueError("config input identities changed during evidence binding")
+    snapshot = config.input_snapshot
+    if snapshot is None or snapshot.config_dir != config_dir:
+        raise ValueError("configuration snapshot unavailable")
+    assert_snapshot_current(snapshot)
+    input_names = snapshot.names
+    current_inputs = snapshot.bytes_by_name()
+    input_identities = snapshot.verifier_identities()
     hashes = tuple(
         ConfigFileHash(name, hashlib.sha256(current_inputs[name]).hexdigest())
         for name in input_names
@@ -761,10 +757,7 @@ def bind_verification_evidence(
     commit, available = _repository_commit(
         config_dir, current_inputs, expected_identities=input_identities
     )
-    if config_input_names(config_dir) != input_names or not _lexical_inputs_match(
-        config_dir, input_identities, current_inputs
-    ):
-        raise ValueError("config input identities changed during evidence binding")
+    assert_snapshot_current(snapshot)
     return replace(
         result,
         authority_id=config.authority_id,

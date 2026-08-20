@@ -15,6 +15,12 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 from referencing import Registry, Resource
 
+from skill_delegator.config_snapshot import (
+    ConfigInput,
+    ConfigInputSnapshot,
+    assert_snapshot_current,
+    input_from_open_file,
+)
 from skill_delegator.errors import ConfigError
 from skill_delegator.identifiers import is_canonical_id, is_source_id
 from skill_delegator.models import AuthorityConfig, PoolSpec, SourceSpec, TargetSpec
@@ -88,11 +94,7 @@ def _parse_document_bytes(
     return document
 
 
-def _load_document(config_dir: Path, filename: str, schema_name: str) -> dict[str, Any]:
-    try:
-        data = (config_dir / filename).read_bytes()
-    except OSError as error:
-        raise ConfigError(f"{filename}: cannot read file: {error}") from error
+def _load_document(data: bytes, filename: str, schema_name: str) -> dict[str, Any]:
     return _parse_document_bytes(
         data, filename, lambda document: schema_errors(document, schema_name)
     )
@@ -144,6 +146,8 @@ def _read_verified_file(
     basename: str,
     filename: str,
     discovered_stat: os.stat_result,
+    *,
+    captured_out: list[ConfigInput] | None = None,
 ) -> bytes:
     try:
         file_fd = os.open(basename, _FILE_OPEN_FLAGS, dir_fd=directory_fd)
@@ -155,9 +159,15 @@ def _read_verified_file(
             raise ConfigError(f"{filename}: delegation input must be a regular file")
         if _identity(opened_stat) != _identity(discovered_stat):
             raise ConfigError(f"{filename}: delegation file changed after discovery")
+        parent_stat = os.fstat(directory_fd)
         with os.fdopen(file_fd, "rb") as stream:
             file_fd = -1
-            return stream.read()
+            data = stream.read()
+        if len(data) != opened_stat.st_size:
+            raise ConfigError(f"{filename}: delegation file changed while reading")
+        if captured_out is not None:
+            captured_out.append(input_from_open_file(filename, data, parent_stat, opened_stat))
+        return data
     except OSError as error:
         raise ConfigError(f"{filename}: cannot read file: {error}") from error
     finally:
@@ -209,6 +219,7 @@ class _DelegationInputs:
     config_fd: int
     discovered: dict[str, os.stat_result]
     directory_fd: int | None = None
+    captured: tuple[ConfigInput, ...] = ()
 
     def close(self) -> None:
         if self.directory_fd is not None:
@@ -219,6 +230,7 @@ class _DelegationInputs:
             self.config_fd = -1
 
     def load_documents(self) -> tuple[dict[str, Any], ...]:
+        captured: list[ConfigInput] = []
         if self.mode == "single":
             discovered_stat = self.discovered["delegations.yaml"]
             data = _read_verified_file(
@@ -227,9 +239,15 @@ class _DelegationInputs:
                 "delegations.yaml",
                 discovered_stat,
             )
+            captured.append(
+                input_from_open_file(
+                    "delegations.yaml", data, os.fstat(self.config_fd), discovered_stat
+                )
+            )
             current_stat = _optional_lstat("delegations.yaml", self.config_fd)
             if current_stat is None or _identity(current_stat) != _identity(discovered_stat):
                 raise ConfigError("delegations.yaml: delegation file changed while reading")
+            self.captured = tuple(captured)
             return (
                 _parse_document_bytes(
                     data,
@@ -243,7 +261,18 @@ class _DelegationInputs:
         for filename in self.names:
             basename = filename.removeprefix("delegations/")
             data = _read_verified_file(
-                self.directory_fd, basename, filename, self.discovered[basename]
+                self.directory_fd,
+                basename,
+                filename,
+                self.discovered[basename],
+            )
+            captured.append(
+                input_from_open_file(
+                    filename,
+                    data,
+                    os.fstat(self.directory_fd),
+                    self.discovered[basename],
+                )
             )
             documents.append(_parse_document_bytes(data, filename, _target_schema_errors))
 
@@ -253,6 +282,7 @@ class _DelegationInputs:
             for name, discovered_stat in self.discovered.items()
         ):
             raise ConfigError("delegations/: delegation entry set changed while reading")
+        self.captured = tuple(captured)
         return tuple(documents)
 
 
@@ -387,15 +417,55 @@ def load_config(
     config_dir = config_dir.resolve(strict=False)
     delegation_inputs = _delegation_input_names(config_dir)
     try:
+        common_inputs: list[ConfigInput] = []
+        common_bytes: dict[str, bytes] = {}
+        for filename in _CONFIG_SCHEMAS:
+            if filename == "delegations.yaml" or (
+                not require_lock and filename == "skill-lock.yaml"
+            ):
+                continue
+            discovered_stat = _optional_lstat(filename, delegation_inputs.config_fd)
+            if discovered_stat is None:
+                raise ConfigError(f"{filename}: cannot read file: file does not exist")
+            if stat.S_ISLNK(discovered_stat.st_mode) or not stat.S_ISREG(discovered_stat.st_mode):
+                raise ConfigError(f"{filename}: configuration input must be a regular file")
+            data = _read_verified_file(
+                delegation_inputs.config_fd, filename, filename, discovered_stat
+            )
+            common_bytes[filename] = data
+            common_inputs.append(
+                input_from_open_file(
+                    filename,
+                    data,
+                    os.fstat(delegation_inputs.config_fd),
+                    discovered_stat,
+                )
+            )
         documents = {
-            filename: _load_document(config_dir, filename, schema)
+            filename: _load_document(common_bytes[filename], filename, schema)
             for filename, schema in _CONFIG_SCHEMAS.items()
             if filename != "delegations.yaml"
             if require_lock or filename != "skill-lock.yaml"
         }
         delegation_documents = delegation_inputs.load_documents()
+        config_stat = os.fstat(delegation_inputs.config_fd)
+        snapshot = ConfigInputSnapshot(
+            config_dir,
+            (config_stat.st_dev, config_stat.st_ino),
+            tuple(
+                sorted(
+                    (*common_inputs, *delegation_inputs.captured),
+                    key=lambda item: os.fsencode(item.name),
+                )
+            ),
+        )
     finally:
         delegation_inputs.close()
+
+    try:
+        assert_snapshot_current(snapshot)
+    except ValueError as error:
+        raise ConfigError("configuration snapshot changed") from error
 
     delegation_mode = delegation_inputs.mode
     delegation_names = delegation_inputs.names
@@ -516,4 +586,5 @@ def load_config(
         targets=targets,
         cache_root=config_dir.parent / "var" / "cache" / "sources",
         delegation_mode=delegation_mode,
+        input_snapshot=snapshot,
     )
