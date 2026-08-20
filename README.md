@@ -79,14 +79,16 @@ A repeated `apply` reports `Already converged`. Identical verification evidence 
 
 ## Create Your Configuration
 
-Each authority uses one directory with five YAML files.
+Each authority uses four shared YAML files plus exactly one delegation format. The legacy
+format is one `delegations.yaml`; the per-target format is a `delegations/` directory with one
+`<target-id>.yaml` file per target. The file and directory are mutually exclusive.
 
 | File | Purpose | Maintainer |
 |---|---|---|
 | `authority.yaml` | Names the authority and enables fail-closed behavior. | The authority owner |
 | `sources.yaml` | Declares reviewed Git or filesystem sources. | The authority owner |
 | `pool.yaml` | Sets the maximum skill set that the authority can grant. | The authority owner |
-| `delegations.yaml` | Declares target roots and grants from the pool. | The authority owner |
+| `delegations.yaml` **or** `delegations/<target-id>.yaml` files | Declares target roots and grants from the pool. | The authority owner |
 | `skill-lock.yaml` | Records exact source and skill identities. | `skillctl lock` generates it. The authority owner reviews it. |
 
 All files use `schema_version: 1`. The schemas reject duplicate YAML keys and unknown fields.
@@ -154,6 +156,23 @@ targets:
 
 Each grant must exist in both the pool and the exact lock.
 
+For independently deployed targets, replace the aggregate file with singular declarations:
+
+```yaml
+# my-config/delegations/worker.yaml
+schema_version: 1
+target:
+  id: worker
+  root: /opt/agent/skills
+  grants:
+    - shared/code-review
+```
+
+Each filename stem must equal its `target.id`, and each file is validated against
+`target-delegation.schema.json`. Never leave `delegations.yaml` beside `delegations/`; the
+loader rejects ambiguous mixed configurations. The legacy aggregate remains supported and is
+validated against `delegations.schema.json`.
+
 Use a target path that the current user can write. The user also needs access to each missing parent directory.
 
 For production, use a dedicated target root and the least required privilege.
@@ -167,7 +186,8 @@ uv run skillctl resolve --json --config my-config
 uv run skillctl plan --json --config my-config
 ```
 
-Review all five files. Then commit the accepted configuration with your normal Git process.
+Review the four shared files and the selected delegation form. Then commit the accepted
+configuration with your normal Git process.
 
 ### 7. Apply and verify the current state
 
@@ -188,7 +208,37 @@ uv run skillctl verify --target niles --config my-config
 uv run skillctl status --json --target niles --config my-config
 ```
 
-`--target` accepts one exact ID from `delegations.yaml` on `plan`, `apply`, `verify`, and `status`. It prevents these commands from scanning or changing another configured target root. Omit it to operate on every target, as before. `lock`, `validate`, and `resolve` always cover the complete authority configuration.
+`--target` accepts one exact configured ID on `plan`, `apply`, `verify`, and `status`. It
+prevents these commands from scanning or changing another configured target root. With
+per-target files, scoped operation also permits roots that are lexically equal or nested because
+only the selected deployment scope is touched. This supports isolated containers that all mount
+their own target at the same in-container path, for example `/opt/agent/skills`.
+
+Omit `--target` to operate on every target. An unscoped per-target operation fails before any
+target scan when configured roots are equal or one contains another; distinct roots retain the
+authority-wide behavior. `lock`, `validate`, and `resolve` always cover the complete authority
+configuration.
+
+Verification receipts bind deterministic provenance for the complete configuration: the four
+shared inputs and either `delegations.yaml` or every `delegations/<target-id>.yaml`, each by its
+relative name and SHA-256. A scoped receipt contains only the selected target fingerprint but
+still hashes every configuration input. It also records the exact repository commit when
+available. Canonical receipt bytes are content-addressed, so identical evidence has the same
+receipt filename and bytes.
+
+### Migrate from `delegations.yaml`
+
+1. Create one temporary singular document per legacy target using `schema_version: 1` and a
+   top-level `target` object. Name each file `<target-id>.yaml`.
+2. Compare `skillctl validate` and deterministic `skillctl resolve --json` results before and
+   after conversion in a review workspace.
+3. Replace `delegations.yaml` with the completed `delegations/` directory in one reviewed change;
+   do not deploy an intermediate tree containing both.
+4. In each isolated target environment, run `plan --target <target-id>` and review it before
+   `apply --target <target-id>`, then run scoped `verify` and `status`.
+
+The exact schema, overlap rules, receipt identity, and migration checks are in the
+[configuration reference](docs/configuration.md).
 
 Read the [configuration reference](docs/configuration.md) before you use advanced paths or multiple sources.
 
@@ -230,7 +280,7 @@ The tool preserves unmanaged target content. A REMOVE also requires a valid mana
 
 | Command | Purpose | Target write |
 |---|---|---:|
-| `validate` | Validate all five configuration files. | No |
+| `validate` | Validate the complete authority configuration. | No |
 | `lock` | Resolve sources and write the exact lock. | No |
 | `resolve --json` | Show the complete authority desired state. | No |
 | `plan [--json] [--target TARGET]` | Compare desired and current state for all targets or one target. | No |

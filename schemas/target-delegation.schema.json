@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "target-delegation.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "target"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "target": {"$ref": "delegations.schema.json#/$defs/target"}
+  }
+}

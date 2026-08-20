@@ -24,15 +24,27 @@
     "config_hashes": {
       "type": "array",
       "minItems": 5,
-      "maxItems": 5,
-      "prefixItems": [
-        {"$ref": "#/$defs/configHash", "properties": {"name": {"const": "authority.yaml"}}},
-        {"$ref": "#/$defs/configHash", "properties": {"name": {"const": "delegations.yaml"}}},
-        {"$ref": "#/$defs/configHash", "properties": {"name": {"const": "pool.yaml"}}},
-        {"$ref": "#/$defs/configHash", "properties": {"name": {"const": "skill-lock.yaml"}}},
-        {"$ref": "#/$defs/configHash", "properties": {"name": {"const": "sources.yaml"}}}
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/configHash"},
+      "allOf": [
+        {"contains": {"properties": {"name": {"const": "authority.yaml"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"name": {"const": "pool.yaml"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"name": {"const": "skill-lock.yaml"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"name": {"const": "sources.yaml"}}}, "minContains": 1, "maxContains": 1}
       ],
-      "items": false
+      "oneOf": [
+        {
+          "maxItems": 5,
+          "contains": {"properties": {"name": {"const": "delegations.yaml"}}},
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "not": {"contains": {"properties": {"name": {"const": "delegations.yaml"}}}},
+          "contains": {"properties": {"name": {"type": "string", "pattern": "^delegations/[a-z][a-z0-9-]*\\.yaml$"}}},
+          "minContains": 1
+        }
+      ]
     },
     "locked_sources": {
       "type": "array",
@@ -114,7 +126,12 @@
       "additionalProperties": false,
       "required": ["name", "sha256"],
       "properties": {
-        "name": {"enum": ["authority.yaml", "delegations.yaml", "pool.yaml", "skill-lock.yaml", "sources.yaml"]},
+        "name": {
+          "anyOf": [
+            {"enum": ["authority.yaml", "delegations.yaml", "pool.yaml", "skill-lock.yaml", "sources.yaml"]},
+            {"type": "string", "pattern": "^delegations/[a-z][a-z0-9-]*\\.yaml$"}
+          ]
+        },
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
       }
     }

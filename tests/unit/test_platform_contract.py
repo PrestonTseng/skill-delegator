@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.fixture_safety import invoke_platform_cli
+
 
 def test_cli_import_and_help_survive_missing_fcntl(monkeypatch, capsys) -> None:
     real_import = builtins.__import__
@@ -22,7 +24,7 @@ def test_cli_import_and_help_survive_missing_fcntl(monkeypatch, capsys) -> None:
     sys.modules.pop("skill_delegator.cli", None)
     cli = importlib.import_module("skill_delegator.cli")
     with pytest.raises(SystemExit) as exit_info:
-        cli.main(["--help"])
+        invoke_platform_cli(cli, ["--help"])
     assert exit_info.value.code == 0
     assert "skillctl" in capsys.readouterr().out
 
@@ -31,7 +33,7 @@ def test_unsupported_platform_has_one_bounded_operational_diagnostic(monkeypatch
     from skill_delegator import cli
 
     monkeypatch.setattr(cli.os, "name", "nt")
-    assert cli.main(["validate"]) == 2
+    assert invoke_platform_cli(cli, ["validate"]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "skillctl error: supported platforms are Linux and macOS\n"
@@ -47,7 +49,7 @@ def test_unlisted_posix_platform_fails_before_configuration_access(monkeypatch, 
 
     monkeypatch.setattr(cli, "load_config", unexpected_load)
 
-    assert cli.main(["validate"]) == 2
+    assert invoke_platform_cli(cli, ["validate"]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "skillctl error: supported platforms are Linux and macOS\n"
@@ -64,7 +66,7 @@ def test_macos_reaches_operational_configuration_loading(monkeypatch) -> None:
     monkeypatch.setattr(cli, "load_config", expected_load)
 
     with pytest.raises(RuntimeError, match="macOS reached configuration loading"):
-        cli.main(["validate"])
+        invoke_platform_cli(cli, ["validate"])
 
 
 def test_project_metadata_declares_linux_and_macos_without_windows_support() -> None:

@@ -6,10 +6,11 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
-from skill_delegator import receipts
-from skill_delegator.cli import main
+from skill_delegator import cli, receipts
+from tests.fixture_safety import run_cli
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -56,7 +57,7 @@ def _write_config(project: Path, *, initialize_git: bool = False) -> Path:
         _git(project, "config", "user.name", "Test")
         _git(project, "add", ".")
         _git(project, "commit", "-qm", "fixture")
-    assert main(["lock", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["lock", "--config", str(config)]) == 0
     if initialize_git:
         _git(project, "add", "config/skill-lock.yaml")
         _git(project, "commit", "-qm", "lock")
@@ -105,8 +106,28 @@ def _write_git_config(project: Path) -> tuple[Path, str]:
     }
     for filename, document in documents.items():
         (config / filename).write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
-    assert main(["lock", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["lock", "--config", str(config)]) == 0
     return config, commit
+
+
+def _use_per_target_delegations(config: Path, *target_ids: str) -> None:
+    legacy = config / "delegations.yaml"
+    if legacy.exists():
+        legacy.unlink()
+    directory = config / "delegations"
+    directory.mkdir(exist_ok=True)
+    for target_id in target_ids:
+        document = {
+            "schema_version": 1,
+            "target": {
+                "id": target_id,
+                "root": f"../targets/{target_id}",
+                "grants": ["example/one"],
+            },
+        }
+        (directory / f"{target_id}.yaml").write_text(
+            yaml.safe_dump(document, sort_keys=False), encoding="utf-8"
+        )
 
 
 def _snapshot(root: Path) -> tuple[tuple[str, str, str], ...]:
@@ -124,19 +145,76 @@ def _snapshot(root: Path) -> tuple[tuple[str, str, str], ...]:
     return tuple(records)
 
 
+@pytest.mark.parametrize("command", ("verify", "status"))
+@pytest.mark.parametrize("replacement", ("changed-bytes", "same-bytes"))
+def test_verification_fails_closed_when_config_snapshot_is_replaced_after_target_scan(
+    tmp_path: Path,
+    capsys,
+    monkeypatch,
+    command: str,
+    replacement: str,
+) -> None:
+    project = tmp_path / "project"
+    config = _write_config(project)
+    _use_per_target_delegations(config, "worker")
+    capsys.readouterr()
+    assert (
+        run_cli(
+            config,
+            config.parent.parent,
+            ["apply", "--target", "worker", "--config", str(config)],
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    declaration = config / "delegations" / "worker.yaml"
+    original_verify_state = cli.verify_state
+
+    def replace_after_verification(*args, **kwargs):
+        result = original_verify_state(*args, **kwargs)
+        if replacement == "changed-bytes":
+            document = yaml.safe_load(declaration.read_text(encoding="utf-8"))
+            document["target"]["root"] = "../targets/substituted"
+            replacement_bytes = yaml.safe_dump(document, sort_keys=False).encode()
+        else:
+            replacement_bytes = declaration.read_bytes()
+        temporary = declaration.with_suffix(".replacement")
+        temporary.write_bytes(replacement_bytes)
+        os.replace(temporary, declaration)
+        return result
+
+    monkeypatch.setattr(cli, "verify_state", replace_after_verification)
+
+    assert (
+        run_cli(
+            config,
+            config.parent.parent,
+            [command, "--target", "worker", "--config", str(config)],
+        )
+        == 2
+    )
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == f"{command.title()} error: configuration snapshot changed\n"
+    receipts_root = project / "var" / "receipts"
+    assert not receipts_root.exists()
+    assert not tuple(project.rglob("*.replacement"))
+
+
 def test_verify_writes_deterministic_receipt_and_status_is_strictly_read_only(
     tmp_path: Path, capsys
 ) -> None:
     project = tmp_path / "project"
     config = _write_config(project)
     capsys.readouterr()
-    assert main(["apply", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
     capsys.readouterr()
     target = project / "target"
     target_before = _snapshot(target)
     config_before = _snapshot(config)
 
-    assert main(["status", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["status", "--config", str(config)]) == 0
     human = capsys.readouterr()
     assert human.out == "converged: 1/1 links verified across 1 target\n"
     assert human.err == ""
@@ -144,13 +222,13 @@ def test_verify_writes_deterministic_receipt_and_status_is_strictly_read_only(
     assert _snapshot(target) == target_before
     assert _snapshot(config) == config_before
 
-    assert main(["status", "--json", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["status", "--json", "--config", str(config)]) == 0
     document = json.loads(capsys.readouterr().out)
     assert document["result"] == "converged"
     assert document["operation_summary"]["verified_links"] == 1
     assert not (project / "var" / "receipts").exists()
 
-    assert main(["verify", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 0
     first = capsys.readouterr()
     assert first.err == ""
     receipt_path = Path(first.out.strip().split("receipt: ", 1)[1])
@@ -159,7 +237,7 @@ def test_verify_writes_deterministic_receipt_and_status_is_strictly_read_only(
     assert _snapshot(target) == target_before
     assert _snapshot(config) == config_before
 
-    assert main(["verify", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 0
     second = capsys.readouterr()
     assert Path(second.out.strip().split("receipt: ", 1)[1]) == receipt_path
     assert receipt_path.read_bytes() == first_bytes
@@ -172,12 +250,12 @@ def test_verify_distinguishes_drift_from_hostile_target_without_traceback(
     project = tmp_path / "project"
     config = _write_config(project)
     capsys.readouterr()
-    assert main(["apply", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
     capsys.readouterr()
     link = project / "target" / "example" / "one"
     link.unlink()
 
-    assert main(["verify", "--config", str(config)]) == 1
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 1
     drift = capsys.readouterr()
     assert "drift" in drift.out
     assert "managed-link-missing" in drift.out
@@ -185,7 +263,7 @@ def test_verify_distinguishes_drift_from_hostile_target_without_traceback(
 
     metadata = project / "target" / ".skill-delegator" / "managed.json"
     metadata.write_text("{}", encoding="utf-8")
-    assert main(["status", "--config", str(config)]) == 3
+    assert run_cli(config, config.parent.parent, ["status", "--config", str(config)]) == 3
     hostile = capsys.readouterr()
     assert hostile.out.startswith("invalid:")
     assert "Traceback" not in hostile.err
@@ -195,7 +273,7 @@ def test_offline_git_ungranted_cache_tamper_never_publishes_receipt(tmp_path: Pa
     project = tmp_path / "project"
     config, commit = _write_git_config(project)
     capsys.readouterr()
-    assert main(["apply", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
     capsys.readouterr()
     lock = yaml.safe_load((config / "skill-lock.yaml").read_text(encoding="utf-8"))
     locked_source = lock["sources"][0]
@@ -203,7 +281,7 @@ def test_offline_git_ungranted_cache_tamper_never_publishes_receipt(tmp_path: Pa
     tamper = snapshot / "ungranted.txt"
     tamper.write_text("not granted to any target\n", encoding="utf-8")
 
-    assert main(["verify", "--config", str(config)]) == 1
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 1
     verify_drift = capsys.readouterr()
     assert verify_drift.err == ""
     assert verify_drift.out.startswith("drift: 0/1 links verified across 1 target\n")
@@ -213,14 +291,14 @@ def test_offline_git_ungranted_cache_tamper_never_publishes_receipt(tmp_path: Pa
     assert not receipts_root.exists()
     before_status = _snapshot(project / "var")
 
-    assert main(["status", "--config", str(config)]) == 1
+    assert run_cli(config, config.parent.parent, ["status", "--config", str(config)]) == 1
     status_drift = capsys.readouterr()
     assert status_drift == verify_drift
     assert _snapshot(project / "var") == before_status
     assert not receipts_root.exists()
 
     tamper.unlink()
-    assert main(["verify", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 0
     converged = capsys.readouterr()
     receipt = Path(converged.out.strip().split("receipt: ", 1)[1])
     document = json.loads(receipt.read_text(encoding="utf-8"))
@@ -244,10 +322,10 @@ def test_receipt_hashes_exact_config_and_lock_bytes_and_captures_detached_commit
     expected_commit = _git(project, "rev-parse", "HEAD")
     _git(project, "checkout", "--detach", "-q", expected_commit)
     capsys.readouterr()
-    assert main(["apply", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
     capsys.readouterr()
 
-    assert main(["verify", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 0
     receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
     document = json.loads(receipt.read_text())
 
@@ -264,13 +342,129 @@ def test_receipt_hashes_exact_config_and_lock_bytes_and_captures_detached_commit
     }
 
 
+def test_receipt_binds_every_per_target_file_and_exact_commit(tmp_path: Path, capsys) -> None:
+    project = tmp_path / "repository"
+    config = _write_config(project, initialize_git=True)
+    _use_per_target_delegations(config, "niles", "leo")
+    _git(project, "add", "config/delegations.yaml", "config/delegations")
+    _git(project, "commit", "-qm", "use per-target delegations")
+    expected_commit = _git(project, "rev-parse", "HEAD")
+    capsys.readouterr()
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
+    capsys.readouterr()
+
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 0
+    receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
+    document = json.loads(receipt.read_text())
+    expected_names = (
+        "authority.yaml",
+        "delegations/leo.yaml",
+        "delegations/niles.yaml",
+        "pool.yaml",
+        "skill-lock.yaml",
+        "sources.yaml",
+    )
+
+    assert document["repository"] == {"available": True, "commit": expected_commit}
+    assert [item["name"] for item in document["config_hashes"]] == list(expected_names)
+    assert {item["name"]: item["sha256"] for item in document["config_hashes"]} == {
+        name: hashlib.sha256((config / name).read_bytes()).hexdigest() for name in expected_names
+    }
+
+
+def test_per_target_change_or_untracked_addition_disables_commit_binding(
+    tmp_path: Path, capsys
+) -> None:
+    project = tmp_path / "repository"
+    config = _write_config(project, initialize_git=True)
+    _use_per_target_delegations(config, "leo")
+    _git(project, "add", "config/delegations.yaml", "config/delegations")
+    _git(project, "commit", "-qm", "use per-target delegations")
+    capsys.readouterr()
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
+    capsys.readouterr()
+
+    with (config / "delegations" / "leo.yaml").open("a", encoding="utf-8") as stream:
+        stream.write("# changed bytes\n")
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 0
+    changed_receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
+    changed = json.loads(changed_receipt.read_text())
+    assert changed["repository"] == {"available": False, "commit": None}
+    assert [item["name"] for item in changed["config_hashes"]] == [
+        "authority.yaml",
+        "delegations/leo.yaml",
+        "pool.yaml",
+        "skill-lock.yaml",
+        "sources.yaml",
+    ]
+
+    _git(project, "checkout", "--", "config/delegations/leo.yaml")
+    _use_per_target_delegations(config, "niles")
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
+    capsys.readouterr()
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 0
+    added_receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
+    added = json.loads(added_receipt.read_text())
+    assert added["repository"] == {"available": False, "commit": None}
+    assert [item["name"] for item in added["config_hashes"]] == [
+        "authority.yaml",
+        "delegations/leo.yaml",
+        "delegations/niles.yaml",
+        "pool.yaml",
+        "skill-lock.yaml",
+        "sources.yaml",
+    ]
+
+
+def test_deleted_per_target_file_changes_receipt_identity_and_disables_commit(
+    tmp_path: Path, capsys
+) -> None:
+    project = tmp_path / "repository"
+    config = _write_config(project, initialize_git=True)
+    _use_per_target_delegations(config, "leo", "niles")
+    _git(project, "add", "config/delegations.yaml", "config/delegations")
+    _git(project, "commit", "-qm", "use per-target delegations")
+    capsys.readouterr()
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
+    capsys.readouterr()
+
+    (config / "delegations" / "niles.yaml").unlink()
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 0
+    receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
+    document = json.loads(receipt.read_text())
+
+    assert document["repository"] == {"available": False, "commit": None}
+    assert [item["name"] for item in document["config_hashes"]] == [
+        "authority.yaml",
+        "delegations/leo.yaml",
+        "pool.yaml",
+        "skill-lock.yaml",
+        "sources.yaml",
+    ]
+
+
+def test_renamed_per_target_file_is_rejected(tmp_path: Path, capsys) -> None:
+    project = tmp_path / "repository"
+    config = _write_config(project)
+    _use_per_target_delegations(config, "leo")
+    (config / "delegations" / "leo.yaml").rename(config / "delegations" / "niles.yaml")
+    capsys.readouterr()
+
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "delegations/niles.yaml" in output.err
+    assert "must match filename stem" in output.err
+    assert not (project / "var" / "receipts").exists()
+
+
 def test_non_git_repository_records_explicit_unavailable_commit(tmp_path: Path, capsys) -> None:
     project = tmp_path / "project"
     config = _write_config(project)
     capsys.readouterr()
-    assert main(["apply", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
     capsys.readouterr()
-    assert main(["verify", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 0
     receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
 
     assert json.loads(receipt.read_text())["repository"] == {
@@ -292,10 +486,10 @@ def test_untracked_nested_config_does_not_capture_unrelated_ancestor_commit(
     _git(outer, "commit", "-qm", "outer")
     config = _write_config(outer / "untracked-project")
     capsys.readouterr()
-    assert main(["apply", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
     capsys.readouterr()
 
-    assert main(["verify", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 0
     receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
 
     assert json.loads(receipt.read_text())["repository"] == {
@@ -310,11 +504,11 @@ def test_dirty_tracked_config_bytes_make_repository_commit_unavailable(
     project = tmp_path / "repository"
     config = _write_config(project, initialize_git=True)
     capsys.readouterr()
-    assert main(["apply", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
     capsys.readouterr()
     with (config / "authority.yaml").open("a", encoding="utf-8") as stream:
         stream.write("# dirty current bytes\n")
-    assert main(["verify", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 0
     receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
     assert json.loads(receipt.read_text())["repository"] == {"available": False, "commit": None}
 
@@ -328,7 +522,7 @@ def test_symlinked_tracked_config_input_never_hashes_external_bytes(tmp_path: Pa
     (config / "authority.yaml").symlink_to(external)
     capsys.readouterr()
 
-    assert main(["verify", "--config", str(config)]) == 2
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 2
     output = capsys.readouterr()
     assert output.out == ""
     assert "regular file" in output.err
@@ -351,10 +545,10 @@ def test_commit_with_tracked_symlink_entry_is_explicitly_unavailable(
     (config / "authority.yaml").unlink()
     (config / "authority.yaml").write_bytes(authority_bytes)
     capsys.readouterr()
-    assert main(["apply", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
     capsys.readouterr()
 
-    assert main(["verify", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 0
     receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
     assert json.loads(receipt.read_text())["repository"] == {"available": False, "commit": None}
 
@@ -365,11 +559,11 @@ def test_commit_binding_requires_git_blob_bytes_to_equal_current_bytes(
     project = tmp_path / "repository"
     config = _write_config(project, initialize_git=True)
     capsys.readouterr()
-    assert main(["apply", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
     capsys.readouterr()
     with (config / "authority.yaml").open("a", encoding="utf-8") as stream:
         stream.write("# differs from commit blob\n")
-    assert main(["verify", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 0
     receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
     document = json.loads(receipt.read_text())
     current_hash = hashlib.sha256((config / "authority.yaml").read_bytes()).hexdigest()
@@ -385,7 +579,7 @@ def test_receipt_ancestor_filesystem_failures_are_bounded_by_cli(
         project = tmp_path / failure / "project"
         config = _write_config(project)
         capsys.readouterr()
-        assert main(["apply", "--config", str(config)]) == 0
+        assert run_cli(config, config.parent.parent, ["apply", "--config", str(config)]) == 0
         capsys.readouterr()
         real_fsync, real_open, real_close = receipts.os.fsync, receipts.os.open, receipts.os.close
         root_metadata = os.stat("/", follow_symlinks=False)
@@ -425,7 +619,7 @@ def test_receipt_ancestor_filesystem_failures_are_bounded_by_cli(
         monkeypatch.setattr(receipts.os, "open", fail_open)
         monkeypatch.setattr(receipts.os, "close", fail_close)
         try:
-            assert main(["verify", "--config", str(config)]) == 3
+            assert run_cli(config, config.parent.parent, ["verify", "--config", str(config)]) == 3
             output = capsys.readouterr()
             assert fired
             assert output.out == ""

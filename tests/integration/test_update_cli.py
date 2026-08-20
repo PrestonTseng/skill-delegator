@@ -4,14 +4,13 @@ import os
 import shutil
 import stat
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 import yaml
 
 from skill_delegator import cli, lockfile
-from skill_delegator.cli import main
+from tests.fixture_safety import run_cli
 
 
 def git(repo: Path, *args: str) -> str:
@@ -73,16 +72,16 @@ def fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     }
     for name, document in documents.items():
         (config / name).write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
-    assert main(["lock", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["lock", "--config", str(config)]) == 0
     return config, work, project / "target"
 
 
 def run_update(config: Path, *selector: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-m", "skill_delegator.cli", "update", *selector, "--config", str(config)],
-        check=False,
-        capture_output=True,
-        text=True,
+    return run_cli(
+        config,
+        config.parent.parent,
+        ["update", *selector, "--config", str(config)],
+        cwd=config.parent,
     )
 
 
@@ -100,9 +99,13 @@ def test_check_is_byte_read_only_and_reports_stably(
     git(work, "commit", "-qm", "two")
     git(work, "push", "-q", "origin", "main")
 
-    first = main(["update", "--check", "--json", "--config", str(config)])
+    first = run_cli(
+        config, config.parent.parent, ["update", "--check", "--json", "--config", str(config)]
+    )
     first_output = capsys.readouterr()
-    second = main(["update", "--check", "--json", "--config", str(config)])
+    second = run_cli(
+        config, config.parent.parent, ["update", "--check", "--json", "--config", str(config)]
+    )
     second_output = capsys.readouterr()
 
     assert first == second == 1
@@ -180,7 +183,7 @@ def test_update_error_does_not_disclose_source_target_cache_or_skill_secret(
     document["sources"][0].update({"type": "filesystem", "location": str(source)})
     document["sources"][0].pop("track")
     sources_path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
-    assert main(["lock", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["lock", "--config", str(config)]) == 0
     capsys.readouterr()
     (source / "escape").symlink_to(outside)
 
@@ -206,7 +209,7 @@ def test_update_replaces_only_lock_after_validation(
     new_commit = git(work, "rev-parse", "HEAD")
     git(work, "push", "-q", "origin", "main")
 
-    result = main(["update", "upstream", "--config", str(config)])
+    result = run_cli(config, config.parent.parent, ["update", "upstream", "--config", str(config)])
     captured = capsys.readouterr()
 
     assert result == 0
@@ -227,7 +230,12 @@ def test_option_conflicts_fail_closed_and_write_failure_preserves_original(
 ) -> None:
     config, work, _ = fixture(tmp_path)
     capsys.readouterr()
-    assert main(["update", "upstream", "--all", "--config", str(config)]) == 2
+    assert (
+        run_cli(
+            config, config.parent.parent, ["update", "upstream", "--all", "--config", str(config)]
+        )
+        == 2
+    )
     conflict = capsys.readouterr()
     assert conflict.out == ""
     assert "conflict" in conflict.err.lower()
@@ -244,7 +252,9 @@ def test_option_conflicts_fail_closed_and_write_failure_preserves_original(
         raise OSError("injected candidate write failure")
 
     monkeypatch.setattr(cli, "write_lock_atomic", fail_write)
-    assert main(["update", "upstream", "--config", str(config)]) == 3
+    assert (
+        run_cli(config, config.parent.parent, ["update", "upstream", "--config", str(config)]) == 3
+    )
     failed = capsys.readouterr()
     assert failed.out == ""
     assert "success" not in failed.err.lower()
@@ -279,7 +289,9 @@ def test_candidate_post_commit_failure_prints_normal_proposal(
 
     monkeypatch.setattr(lockfile.os, "fsync", fail_publication_fsync)
 
-    assert main(["update", "upstream", "--config", str(config)]) == 0
+    assert (
+        run_cli(config, config.parent.parent, ["update", "upstream", "--config", str(config)]) == 0
+    )
     captured = capsys.readouterr()
     assert captured.err == ""
     assert "source upstream: fast-forward" in captured.out
@@ -301,7 +313,7 @@ def test_all_validates_every_candidate_before_single_lock_write(
     second["id"] = "secondary"
     sources["sources"].append(second)
     sources_path.write_text(yaml.safe_dump(sources, sort_keys=False), encoding="utf-8")
-    assert main(["lock", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["lock", "--config", str(config)]) == 0
     capsys.readouterr()
     write_skill(work, "two")
     git(work, "add", ".")
@@ -317,7 +329,7 @@ def test_all_validates_every_candidate_before_single_lock_write(
         return original_prepare(source_id, authority, candidate)
 
     monkeypatch.setattr(cli, "prepare_update", fail_second)
-    assert main(["update", "--all", "--config", str(config)]) == 3
+    assert run_cli(config, config.parent.parent, ["update", "--all", "--config", str(config)]) == 3
     failed = capsys.readouterr()
     assert failed.out == ""
     assert failed.err == "Update blocked: source-invalid\n"

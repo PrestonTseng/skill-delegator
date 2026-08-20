@@ -46,6 +46,17 @@ def _result() -> VerificationResult:
     )
 
 
+def _sharded_hashes() -> tuple[ConfigFileHash, ...]:
+    return (
+        ConfigFileHash("authority.yaml", _SHA_A),
+        ConfigFileHash("delegations/leo.yaml", _SHA_A),
+        ConfigFileHash("delegations/niles.yaml", _SHA_B),
+        ConfigFileHash("pool.yaml", _SHA_A),
+        ConfigFileHash("skill-lock.yaml", _SHA_B),
+        ConfigFileHash("sources.yaml", _SHA_A),
+    )
+
+
 def test_receipt_document_has_strict_stable_public_schema_without_skill_content() -> None:
     document = receipt_document(_result())
 
@@ -59,6 +70,25 @@ def test_receipt_document_has_strict_stable_public_schema_without_skill_content(
     assert "description" not in payload
     assert "SKILL.md" not in payload
     assert "timestamp" not in payload
+
+
+def test_receipt_accepts_sorted_per_target_config_hashes() -> None:
+    result = replace(_result(), config_hashes=_sharded_hashes())
+
+    document = receipt_document(result)
+    jsonschema.Draft202012Validator(
+        json.loads(schema_text("verification-receipt.schema.json"))
+    ).validate(document)
+    receipts._validate_semantics(result)
+
+    assert [item["name"] for item in document["config_hashes"]] == [
+        "authority.yaml",
+        "delegations/leo.yaml",
+        "delegations/niles.yaml",
+        "pool.yaml",
+        "skill-lock.yaml",
+        "sources.yaml",
+    ]
 
 
 def test_repeated_identical_receipt_has_stable_path_and_byte_identical_content(
@@ -234,6 +264,94 @@ def test_write_receipt_rejects_duplicate_or_missing_config_names(
         write_receipt(
             replace(_result(), config_hashes=config_hashes), tmp_path / "var" / "receipts"
         )
+
+
+@pytest.mark.parametrize(
+    "names",
+    (
+        (
+            "authority.yaml",
+            "delegations.yaml",
+            "delegations/leo.yaml",
+            "pool.yaml",
+            "skill-lock.yaml",
+            "sources.yaml",
+        ),
+        ("authority.yaml", "delegations/leo.yaml", "pool.yaml", "skill-lock.yaml"),
+        (
+            "authority.yaml",
+            "delegations/leo.yaml",
+            "delegations/leo.yaml",
+            "pool.yaml",
+            "skill-lock.yaml",
+            "sources.yaml",
+        ),
+        (
+            "authority.yaml",
+            "delegations/../leo.yaml",
+            "pool.yaml",
+            "skill-lock.yaml",
+            "sources.yaml",
+        ),
+        (
+            "authority.yaml",
+            "delegations/nested/leo.yaml",
+            "pool.yaml",
+            "skill-lock.yaml",
+            "sources.yaml",
+        ),
+        (
+            "authority.yaml",
+            "delegations/niles.yaml",
+            "delegations/leo.yaml",
+            "pool.yaml",
+            "skill-lock.yaml",
+            "sources.yaml",
+        ),
+    ),
+)
+def test_receipt_rejects_invalid_dynamic_config_identity_sets(names: tuple[str, ...]) -> None:
+    hashes = tuple(
+        ConfigFileHash(name, _SHA_A if index % 2 == 0 else _SHA_B)
+        for index, name in enumerate(names)
+    )
+
+    with pytest.raises(ReceiptError, match="config_hashes"):
+        receipts._validate_semantics(replace(_result(), config_hashes=hashes))
+
+
+def test_public_schema_accepts_dynamic_names_and_rejects_unsafe_name() -> None:
+    validator = jsonschema.Draft202012Validator(
+        json.loads(schema_text("verification-receipt.schema.json"))
+    )
+    dynamic = receipt_document(replace(_result(), config_hashes=_sharded_hashes()))
+    unsafe = json.loads(json.dumps(dynamic))
+    unsafe["config_hashes"][1]["name"] = "delegations/../leo.yaml"
+
+    assert not list(validator.iter_errors(dynamic))
+    assert list(validator.iter_errors(unsafe))
+
+
+@pytest.mark.parametrize("malformed_name", (None, 7, [], {}))
+def test_public_schema_rejects_non_string_dynamic_config_names(malformed_name: object) -> None:
+    validator = jsonschema.Draft202012Validator(
+        json.loads(schema_text("verification-receipt.schema.json"))
+    )
+    dynamic = receipt_document(replace(_result(), config_hashes=_sharded_hashes()))
+    dynamic["config_hashes"][1]["name"] = malformed_name
+
+    assert list(validator.iter_errors(dynamic))
+
+
+@pytest.mark.parametrize("malformed_name", (None, 7, [], {}))
+def test_receipt_document_rejects_non_string_config_names_with_receipt_error(
+    malformed_name: object,
+) -> None:
+    hashes = list(_sharded_hashes())
+    hashes[1] = ConfigFileHash(malformed_name, _SHA_A)  # type: ignore[arg-type]
+
+    with pytest.raises(ReceiptError, match="config_hashes"):
+        receipt_document(replace(_result(), config_hashes=tuple(hashes)))
 
 
 @pytest.mark.parametrize(
