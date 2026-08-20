@@ -202,7 +202,7 @@ uv run skillctl verify --target niles --config my-config
 uv run skillctl status --json --target niles --config my-config
 ```
 
-The selector is available on `resolve`, `plan`, `apply`, `verify`, and `status`. An unknown ID fails before target scanning or mutation. Without `--target`, these commands retain their authority-wide behavior.
+The selector is available on `plan`, `apply`, `verify`, and `status`. An unknown ID fails before target scanning or mutation. Without `--target`, these commands retain their authority-wide behavior. `resolve` always reports the complete authority desired state.
 
 `apply` recomputes and immediately executes a new plan. It does not consume the displayed `plan` output.
 

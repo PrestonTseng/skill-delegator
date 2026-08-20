@@ -59,10 +59,6 @@ def test_target_scoped_workflow_only_reads_and_mutates_selected_target(
     hostile.parent.mkdir(parents=True)
     hostile.write_text("unmanaged", encoding="utf-8")
 
-    assert main(["resolve", "--json", "--target", "niles", "--config", str(config)]) == 0
-    resolved = json.loads(capsys.readouterr().out)
-    assert [target["id"] for target in resolved["targets"]] == ["niles"]
-
     assert main(["plan", "--json", "--target", "niles", "--config", str(config)]) == 1
     plan = json.loads(capsys.readouterr().out)
     assert {operation["target_id"] for operation in plan["operations"]} == {"niles"}
@@ -85,7 +81,7 @@ def test_target_scoped_workflow_only_reads_and_mutates_selected_target(
     assert hostile.read_text(encoding="utf-8") == "unmanaged"
 
 
-@pytest.mark.parametrize("command", ["resolve", "plan", "apply", "verify", "status"])
+@pytest.mark.parametrize("command", ["plan", "apply", "verify", "status"])
 def test_target_scoped_commands_reject_unknown_target_without_mutation(
     command: str, tmp_path: Path, capsys
 ) -> None:
@@ -93,13 +89,10 @@ def test_target_scoped_commands_reject_unknown_target_without_mutation(
     config = _write_config(project)
     capsys.readouterr()
     arguments = [command, "--target", "missing", "--config", str(config)]
-    if command == "resolve":
-        arguments.append("--json")
-
     assert main(arguments) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert captured.err == "Target error: unknown target 'missing'\n"
+    assert captured.err == "Target error: unknown target selector\n"
     assert not (project / "targets").exists()
 
 
@@ -119,3 +112,23 @@ def test_target_scope_keeps_whole_authority_collision_validation(tmp_path: Path,
     assert captured.out == ""
     assert "target path collision" in captured.err
     assert not (project / "targets").exists()
+
+
+@pytest.mark.parametrize(
+    ("selector", "message"),
+    [
+        ("bad\nspoof", "Target error: invalid target selector\n"),
+        ("a" * 1000, "Target error: unknown target selector\n"),
+    ],
+)
+def test_invalid_target_selector_has_bounded_single_line_error(
+    selector: str, message: str, tmp_path: Path, capsys
+) -> None:
+    config = _write_config(tmp_path / "project")
+    capsys.readouterr()
+
+    assert main(["apply", "--target", selector, "--config", str(config)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == message
+    assert not (tmp_path / "project" / "targets").exists()

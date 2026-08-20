@@ -84,6 +84,22 @@ def test_main_example_parses_with_safe_lexical_target_roots() -> None:
         config.authority_id = "changed"  # type: ignore[misc]
 
 
+def test_target_scope_checks_only_selected_safe_example_target_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config_dir = copy_config(tmp_path)
+    checked: list[Path] = []
+    monkeypatch.setattr(
+        config_module,
+        "_reject_symlink_components",
+        lambda _repository_root, target_root: checked.append(target_root),
+    )
+
+    load_config(config_dir, target_scope="worker")
+
+    assert checked == [tmp_path / "var" / "example-targets" / "worker"]
+
+
 def test_non_fixture_target_root_preserves_symlink_ancestor_lexically(tmp_path: Path) -> None:
     config_dir = copy_config(tmp_path)
     rewrite_yaml(

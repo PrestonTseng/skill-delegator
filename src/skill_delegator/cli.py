@@ -14,6 +14,7 @@ import yaml
 
 from skill_delegator.config import load_config
 from skill_delegator.errors import ConfigError, SourceError, UpdateError
+from skill_delegator.identifiers import is_source_id
 from skill_delegator.lockfile import build_lock, write_lock_atomic
 from skill_delegator.managed_state import TargetStateError, scan_target
 from skill_delegator.models import (
@@ -54,7 +55,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     resolve.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     resolve.add_argument("--json", action="store_true", required=True)
-    resolve.add_argument("--target", metavar="TARGET")
     plan = subparsers.add_parser("plan", help="scan targets and plan without applying changes")
     plan.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     plan.add_argument("--json", action="store_true")
@@ -89,7 +89,7 @@ def _selected_targets(config: AuthorityConfig, target_id: str | None) -> tuple[T
         return config.targets
     selected = tuple(target for target in config.targets if target.id == target_id)
     if not selected:
-        raise TargetSelectionError(f"unknown target '{target_id}'")
+        raise TargetSelectionError("unknown target selector")
     return selected
 
 
@@ -184,7 +184,7 @@ def _render_plan(plan: ReconciliationPlan, *, json_output: bool) -> None:
 
 def _fresh_verification(config_dir: Path, target_id: str | None = None):
     config_dir = config_dir.resolve(strict=False)
-    config = load_config(config_dir)
+    config = load_config(config_dir, target_scope=target_id)
     _selected_targets(config, target_id)
     lock = _load_validated_lock(config_dir)
     desired = resolve_desired_state(config, lock)
@@ -248,6 +248,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if os.name != "posix" or sys.platform not in {"linux", "darwin"}:
         print("skillctl error: supported platforms are Linux and macOS", file=sys.stderr)
+        return 2
+    target_id = getattr(args, "target", None)
+    if target_id is not None and not is_source_id(target_id):
+        print("Target error: invalid target selector", file=sys.stderr)
         return 2
     if args.command == "validate":
         try:
@@ -346,13 +350,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             config_dir = args.config.resolve(strict=False)
             config = load_config(config_dir)
-            _selected_targets(config, args.target)
             lock = _load_validated_lock(config_dir)
             state = resolve_desired_state(config, lock)
-            state = _select_desired_target(state, args.target)
-        except TargetSelectionError as error:
-            print(f"Target error: {error}", file=sys.stderr)
-            return 2
         except (ConfigError, OSError, ResolutionError) as error:
             print(f"Resolve error: {error}", file=sys.stderr)
             return 2
@@ -361,7 +360,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "plan":
         try:
             config_dir = args.config.resolve(strict=False)
-            config = load_config(config_dir)
+            config = load_config(config_dir, target_scope=args.target)
             selected_targets = _selected_targets(config, args.target)
             lock = _load_validated_lock(config_dir)
             desired = resolve_desired_state(config, lock)
@@ -387,7 +386,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "apply":
         try:
             config_dir = args.config.resolve(strict=False)
-            config = load_config(config_dir)
+            config = load_config(config_dir, target_scope=args.target)
             selected_targets = _selected_targets(config, args.target)
             lock = _load_validated_lock(config_dir)
             desired = resolve_desired_state(config, lock)
