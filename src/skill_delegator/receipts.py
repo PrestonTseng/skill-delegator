@@ -32,10 +32,17 @@ _SHARED_CONFIG_NAMES = (
 _TARGET_CONFIG_NAME = re.compile(r"delegations/[a-z][a-z0-9-]*\.yaml")
 
 
+def _config_names(result: VerificationResult) -> tuple[str, ...]:
+    names = tuple(item.name for item in result.config_hashes)
+    if any(not isinstance(name, str) for name in names):
+        raise ReceiptError("verification result has invalid config_hashes identities")
+    return names
+
+
 def _validate_semantics(result: VerificationResult) -> None:
     if result.result != "converged":
         raise ReceiptError("verification receipt requires a converged result")
-    config_names = tuple(item.name for item in result.config_hashes)
+    config_names = _config_names(result)
     shared_names = tuple(name for name in config_names if name in _SHARED_CONFIG_NAMES)
     legacy_count = config_names.count("delegations.yaml")
     target_names = tuple(name for name in config_names if _TARGET_CONFIG_NAME.fullmatch(name))
@@ -110,6 +117,7 @@ def _validate_semantics(result: VerificationResult) -> None:
 def receipt_document(result: VerificationResult) -> dict[str, Any]:
     """Render only allow-listed, deterministic verification evidence."""
 
+    _config_names(result)
     return {
         "schema_version": 1,
         "authority_id": result.authority_id,

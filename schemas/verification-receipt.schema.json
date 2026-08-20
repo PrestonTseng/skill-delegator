@@ -41,7 +41,7 @@
         },
         {
           "not": {"contains": {"properties": {"name": {"const": "delegations.yaml"}}}},
-          "contains": {"properties": {"name": {"pattern": "^delegations/[a-z][a-z0-9-]*\\.yaml$"}}},
+          "contains": {"properties": {"name": {"type": "string", "pattern": "^delegations/[a-z][a-z0-9-]*\\.yaml$"}}},
           "minContains": 1
         }
       ]
@@ -129,7 +129,7 @@
         "name": {
           "anyOf": [
             {"enum": ["authority.yaml", "delegations.yaml", "pool.yaml", "skill-lock.yaml", "sources.yaml"]},
-            {"pattern": "^delegations/[a-z][a-z0-9-]*\\.yaml$"}
+            {"type": "string", "pattern": "^delegations/[a-z][a-z0-9-]*\\.yaml$"}
           ]
         },
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}

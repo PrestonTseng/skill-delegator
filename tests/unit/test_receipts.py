@@ -332,6 +332,28 @@ def test_public_schema_accepts_dynamic_names_and_rejects_unsafe_name() -> None:
     assert list(validator.iter_errors(unsafe))
 
 
+@pytest.mark.parametrize("malformed_name", (None, 7, [], {}))
+def test_public_schema_rejects_non_string_dynamic_config_names(malformed_name: object) -> None:
+    validator = jsonschema.Draft202012Validator(
+        json.loads(schema_text("verification-receipt.schema.json"))
+    )
+    dynamic = receipt_document(replace(_result(), config_hashes=_sharded_hashes()))
+    dynamic["config_hashes"][1]["name"] = malformed_name
+
+    assert list(validator.iter_errors(dynamic))
+
+
+@pytest.mark.parametrize("malformed_name", (None, 7, [], {}))
+def test_receipt_document_rejects_non_string_config_names_with_receipt_error(
+    malformed_name: object,
+) -> None:
+    hashes = list(_sharded_hashes())
+    hashes[1] = ConfigFileHash(malformed_name, _SHA_A)  # type: ignore[arg-type]
+
+    with pytest.raises(ReceiptError, match="config_hashes"):
+        receipt_document(replace(_result(), config_hashes=tuple(hashes)))
+
+
 @pytest.mark.parametrize(
     "identity",
     (
