@@ -17,6 +17,7 @@ from skill_delegator.errors import ConfigError, SourceError, UpdateError
 from skill_delegator.lockfile import build_lock, write_lock_atomic
 from skill_delegator.managed_state import TargetStateError, scan_target
 from skill_delegator.models import (
+    AuthorityConfig,
     CurrentState,
     DesiredSource,
     DesiredState,
@@ -25,6 +26,7 @@ from skill_delegator.models import (
     LockedSource,
     ReconciliationPlan,
     SkillLock,
+    TargetSpec,
 )
 from skill_delegator.planner import build_plan, plan_json, plan_text
 from skill_delegator.receipts import ReceiptError, receipt_document, write_receipt
@@ -52,18 +54,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     resolve.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     resolve.add_argument("--json", action="store_true", required=True)
+    resolve.add_argument("--target", metavar="TARGET")
     plan = subparsers.add_parser("plan", help="scan targets and plan without applying changes")
     plan.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     plan.add_argument("--json", action="store_true")
+    plan.add_argument("--target", metavar="TARGET")
     apply = subparsers.add_parser("apply", help="transactionally apply the validated plan")
     apply.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     apply.add_argument("--yes", action="store_true", help="confirm plans containing REMOVE")
     apply.add_argument("--lock-timeout", type=float, default=5.0, metavar="SECONDS")
+    apply.add_argument("--target", metavar="TARGET")
     verify = subparsers.add_parser("verify", help="freshly verify state and write an audit receipt")
     verify.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
+    verify.add_argument("--target", metavar="TARGET")
     status = subparsers.add_parser("status", help="freshly report state without writing a receipt")
     status.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     status.add_argument("--json", action="store_true")
+    status.add_argument("--target", metavar="TARGET")
     update = subparsers.add_parser("update", help="check or propose explicit source updates")
     update.add_argument("source", nargs="?", metavar="SOURCE")
     update.add_argument("--all", action="store_true", dest="all_sources")
@@ -71,6 +78,27 @@ def build_parser() -> argparse.ArgumentParser:
     update.add_argument("--json", action="store_true")
     update.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     return parser
+
+
+class TargetSelectionError(ValueError):
+    """A requested target is not declared by the authority configuration."""
+
+
+def _selected_targets(config: AuthorityConfig, target_id: str | None) -> tuple[TargetSpec, ...]:
+    if target_id is None:
+        return config.targets
+    selected = tuple(target for target in config.targets if target.id == target_id)
+    if not selected:
+        raise TargetSelectionError(f"unknown target '{target_id}'")
+    return selected
+
+
+def _select_desired_target(state: DesiredState, target_id: str | None) -> DesiredState:
+    if target_id is None:
+        return state
+    return replace(
+        state, targets=tuple(target for target in state.targets if target.id == target_id)
+    )
 
 
 def _load_validated_lock(config_dir: Path) -> SkillLock:
@@ -154,11 +182,13 @@ def _render_plan(plan: ReconciliationPlan, *, json_output: bool) -> None:
     sys.stdout.write(plan_json(plan) if json_output else plan_text(plan))
 
 
-def _fresh_verification(config_dir: Path):
+def _fresh_verification(config_dir: Path, target_id: str | None = None):
     config_dir = config_dir.resolve(strict=False)
     config = load_config(config_dir)
+    _selected_targets(config, target_id)
     lock = _load_validated_lock(config_dir)
     desired = resolve_desired_state(config, lock)
+    desired = _select_desired_target(desired, target_id)
     cache_root = config_dir.parent / "var" / "cache" / "sources"
     desired = _bind_expected_sources(desired, lock, cache_root)
     result = verify_state(desired, CurrentState((), cache_root))
@@ -316,8 +346,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             config_dir = args.config.resolve(strict=False)
             config = load_config(config_dir)
+            _selected_targets(config, args.target)
             lock = _load_validated_lock(config_dir)
             state = resolve_desired_state(config, lock)
+            state = _select_desired_target(state, args.target)
+        except TargetSelectionError as error:
+            print(f"Target error: {error}", file=sys.stderr)
+            return 2
         except (ConfigError, OSError, ResolutionError) as error:
             print(f"Resolve error: {error}", file=sys.stderr)
             return 2
@@ -327,14 +362,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             config_dir = args.config.resolve(strict=False)
             config = load_config(config_dir)
+            selected_targets = _selected_targets(config, args.target)
             lock = _load_validated_lock(config_dir)
             desired = resolve_desired_state(config, lock)
+            desired = _select_desired_target(desired, args.target)
             cache_root = config_dir.parent / "var" / "cache" / "sources"
             desired = _bind_expected_sources(desired, lock, cache_root)
             current = CurrentState(
-                tuple(scan_target(target) for target in config.targets), cache_root
+                tuple(scan_target(target) for target in selected_targets), cache_root
             )
             plan = build_plan(desired, current)
+        except TargetSelectionError as error:
+            print(f"Target error: {error}", file=sys.stderr)
+            return 2
         except TargetStateError as error:
             plan = ReconciliationPlan((), (str(error),))
         except (ConfigError, OSError, ResolutionError) as error:
@@ -348,14 +388,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             config_dir = args.config.resolve(strict=False)
             config = load_config(config_dir)
+            selected_targets = _selected_targets(config, args.target)
             lock = _load_validated_lock(config_dir)
             desired = resolve_desired_state(config, lock)
+            desired = _select_desired_target(desired, args.target)
             cache_root = config_dir.parent / "var" / "cache" / "sources"
             desired = _bind_expected_sources(desired, lock, cache_root)
             current = CurrentState(
-                tuple(scan_target(target) for target in config.targets), cache_root
+                tuple(scan_target(target) for target in selected_targets), cache_root
             )
             plan = build_plan(desired, current)
+        except TargetSelectionError as error:
+            print(f"Target error: {error}", file=sys.stderr)
+            return 2
         except TargetStateError as error:
             print(f"Apply blocked: {error}", file=sys.stderr)
             return 3
@@ -383,7 +428,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command in {"verify", "status"}:
         label = "Verify" if args.command == "verify" else "Status"
         try:
-            result = _fresh_verification(args.config)
+            result = _fresh_verification(args.config, args.target)
+        except TargetSelectionError as error:
+            print(f"Target error: {error}", file=sys.stderr)
+            return 2
         except (ConfigError, OSError, ResolutionError, ValueError) as error:
             print(f"{label} error: {error}", file=sys.stderr)
             return 2

@@ -193,6 +193,17 @@ uv run skillctl verify --config my-config
 uv run skillctl status --json --config my-config
 ```
 
+For independent target operators, pass the same exact target ID to each target-sensitive command:
+
+```console
+uv run skillctl plan --json --target niles --config my-config
+uv run skillctl apply --target niles --config my-config
+uv run skillctl verify --target niles --config my-config
+uv run skillctl status --json --target niles --config my-config
+```
+
+The selector is available on `resolve`, `plan`, `apply`, `verify`, and `status`. An unknown ID fails before target scanning or mutation. Without `--target`, these commands retain their authority-wide behavior.
+
 `apply` recomputes and immediately executes a new plan. It does not consume the displayed `plan` output.
 
 CAUTION: `--yes` authorizes each REMOVE in this new plan. Use it only when you accept this V1 limit.
