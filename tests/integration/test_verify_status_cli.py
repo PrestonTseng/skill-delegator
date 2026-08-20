@@ -109,6 +109,26 @@ def _write_git_config(project: Path) -> tuple[Path, str]:
     return config, commit
 
 
+def _use_per_target_delegations(config: Path, *target_ids: str) -> None:
+    legacy = config / "delegations.yaml"
+    if legacy.exists():
+        legacy.unlink()
+    directory = config / "delegations"
+    directory.mkdir(exist_ok=True)
+    for target_id in target_ids:
+        document = {
+            "schema_version": 1,
+            "target": {
+                "id": target_id,
+                "root": f"../targets/{target_id}",
+                "grants": ["example/one"],
+            },
+        }
+        (directory / f"{target_id}.yaml").write_text(
+            yaml.safe_dump(document, sort_keys=False), encoding="utf-8"
+        )
+
+
 def _snapshot(root: Path) -> tuple[tuple[str, str, str], ...]:
     if not root.exists():
         return ()
@@ -262,6 +282,122 @@ def test_receipt_hashes_exact_config_and_lock_bytes_and_captures_detached_commit
             "sources.yaml",
         )
     }
+
+
+def test_receipt_binds_every_per_target_file_and_exact_commit(tmp_path: Path, capsys) -> None:
+    project = tmp_path / "repository"
+    config = _write_config(project, initialize_git=True)
+    _use_per_target_delegations(config, "niles", "leo")
+    _git(project, "add", "config/delegations.yaml", "config/delegations")
+    _git(project, "commit", "-qm", "use per-target delegations")
+    expected_commit = _git(project, "rev-parse", "HEAD")
+    capsys.readouterr()
+    assert main(["apply", "--config", str(config)]) == 0
+    capsys.readouterr()
+
+    assert main(["verify", "--config", str(config)]) == 0
+    receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
+    document = json.loads(receipt.read_text())
+    expected_names = (
+        "authority.yaml",
+        "delegations/leo.yaml",
+        "delegations/niles.yaml",
+        "pool.yaml",
+        "skill-lock.yaml",
+        "sources.yaml",
+    )
+
+    assert document["repository"] == {"available": True, "commit": expected_commit}
+    assert [item["name"] for item in document["config_hashes"]] == list(expected_names)
+    assert {item["name"]: item["sha256"] for item in document["config_hashes"]} == {
+        name: hashlib.sha256((config / name).read_bytes()).hexdigest() for name in expected_names
+    }
+
+
+def test_per_target_change_or_untracked_addition_disables_commit_binding(
+    tmp_path: Path, capsys
+) -> None:
+    project = tmp_path / "repository"
+    config = _write_config(project, initialize_git=True)
+    _use_per_target_delegations(config, "leo")
+    _git(project, "add", "config/delegations.yaml", "config/delegations")
+    _git(project, "commit", "-qm", "use per-target delegations")
+    capsys.readouterr()
+    assert main(["apply", "--config", str(config)]) == 0
+    capsys.readouterr()
+
+    with (config / "delegations" / "leo.yaml").open("a", encoding="utf-8") as stream:
+        stream.write("# changed bytes\n")
+    assert main(["verify", "--config", str(config)]) == 0
+    changed_receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
+    changed = json.loads(changed_receipt.read_text())
+    assert changed["repository"] == {"available": False, "commit": None}
+    assert [item["name"] for item in changed["config_hashes"]] == [
+        "authority.yaml",
+        "delegations/leo.yaml",
+        "pool.yaml",
+        "skill-lock.yaml",
+        "sources.yaml",
+    ]
+
+    _git(project, "checkout", "--", "config/delegations/leo.yaml")
+    _use_per_target_delegations(config, "niles")
+    assert main(["apply", "--config", str(config)]) == 0
+    capsys.readouterr()
+    assert main(["verify", "--config", str(config)]) == 0
+    added_receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
+    added = json.loads(added_receipt.read_text())
+    assert added["repository"] == {"available": False, "commit": None}
+    assert [item["name"] for item in added["config_hashes"]] == [
+        "authority.yaml",
+        "delegations/leo.yaml",
+        "delegations/niles.yaml",
+        "pool.yaml",
+        "skill-lock.yaml",
+        "sources.yaml",
+    ]
+
+
+def test_deleted_per_target_file_changes_receipt_identity_and_disables_commit(
+    tmp_path: Path, capsys
+) -> None:
+    project = tmp_path / "repository"
+    config = _write_config(project, initialize_git=True)
+    _use_per_target_delegations(config, "leo", "niles")
+    _git(project, "add", "config/delegations.yaml", "config/delegations")
+    _git(project, "commit", "-qm", "use per-target delegations")
+    capsys.readouterr()
+    assert main(["apply", "--config", str(config)]) == 0
+    capsys.readouterr()
+
+    (config / "delegations" / "niles.yaml").unlink()
+    assert main(["verify", "--config", str(config)]) == 0
+    receipt = Path(capsys.readouterr().out.strip().split("receipt: ", 1)[1])
+    document = json.loads(receipt.read_text())
+
+    assert document["repository"] == {"available": False, "commit": None}
+    assert [item["name"] for item in document["config_hashes"]] == [
+        "authority.yaml",
+        "delegations/leo.yaml",
+        "pool.yaml",
+        "skill-lock.yaml",
+        "sources.yaml",
+    ]
+
+
+def test_renamed_per_target_file_is_rejected(tmp_path: Path, capsys) -> None:
+    project = tmp_path / "repository"
+    config = _write_config(project)
+    _use_per_target_delegations(config, "leo")
+    (config / "delegations" / "leo.yaml").rename(config / "delegations" / "niles.yaml")
+    capsys.readouterr()
+
+    assert main(["verify", "--config", str(config)]) == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "delegations/niles.yaml" in output.err
+    assert "must match filename stem" in output.err
+    assert not (project / "var" / "receipts").exists()
 
 
 def test_non_git_repository_records_explicit_unavailable_commit(tmp_path: Path, capsys) -> None:
