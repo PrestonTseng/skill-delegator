@@ -235,7 +235,7 @@ def test_forbidden():
     )
 
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "conftest", os.fspath(path)],
+        [sys.executable, "-m", "pytest", "-q", "-p", "tests.conftest", os.fspath(path)],
         cwd=REPOSITORY_ROOT,
         capture_output=True,
         text=True,

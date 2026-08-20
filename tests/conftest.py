@@ -10,7 +10,7 @@ import pytest
 
 from tests.fixture_safety import mutation_policy_violations
 
-REPOSITORY_ROOT = Path(__file__).parent
+REPOSITORY_ROOT = Path(__file__).parent.parent
 POLICY_TEST = REPOSITORY_ROOT / "tests" / "unit" / "test_fixture_safety.py"
 
 

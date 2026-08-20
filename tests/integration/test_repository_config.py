@@ -84,29 +84,32 @@ def _assert_ci_contract(workflows_dir: Path) -> None:
 
     assert_no_working_directory(workflow)
     jobs = workflow["jobs"]
-    assert len(jobs) == 2
-    assert sorted(job["runs-on"] for job in jobs.values()) == ["macos-latest", "ubuntu-latest"]
-    for job in jobs.values():
-        conditions = [job.get("if"), *(step.get("if") for step in job["steps"])]
-        for condition in (condition for condition in conditions if condition is not None):
-            lowered = str(condition).lower()
-            assert not any(marker in lowered for marker in ref_condition_markers)
+    assert list(jobs) == ["test"]
+    job = jobs["test"]
+    assert job["runs-on"] == "${{ matrix.os }}"
+    matrix = job["strategy"]["matrix"]
+    assert matrix == {"os": ["ubuntu-latest", "macos-latest"]}
 
-        checkouts = [
-            step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")
-        ]
-        assert len(checkouts) == 1
-        checkout_options = checkouts[0].get("with", {})
-        assert isinstance(checkout_options, dict)
-        assert "ref" not in checkout_options
+    conditions = [job.get("if"), *(step.get("if") for step in job["steps"])]
+    for condition in (condition for condition in conditions if condition is not None):
+        lowered = str(condition).lower()
+        assert not any(marker in lowered for marker in ref_condition_markers)
 
-        run_commands = [shlex.split(step["run"]) for step in job["steps"] if "run" in step]
-        for command in run_commands:
-            for index, token in enumerate(command[:-1]):
-                assert not (
-                    Path(token).name == "skillctl" and command[index + 1] in prohibited_subcommands
-                )
-        assert run_commands == expected_commands
+    checkouts = [
+        step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")
+    ]
+    assert len(checkouts) == 1
+    checkout_options = checkouts[0].get("with", {})
+    assert isinstance(checkout_options, dict)
+    assert "ref" not in checkout_options
+
+    run_commands = [shlex.split(step["run"]) for step in job["steps"] if "run" in step]
+    for command in run_commands:
+        for index, token in enumerate(command[:-1]):
+            assert not (
+                Path(token).name == "skillctl" and command[index + 1] in prohibited_subcommands
+            )
+    assert run_commands == expected_commands
 
 
 def test_ci_runs_the_same_branch_agnostic_repository_gates_on_linux_and_macos() -> None:
@@ -126,8 +129,12 @@ def _mutated_workflows(tmp_path: Path, mutation: str) -> Path:
     workflow = yaml.safe_load(text)
     jobs = workflow["jobs"]
     first_job = next(iter(jobs.values()))
-    if mutation == "third-job":
-        jobs["duplicate-linux"] = deepcopy(first_job)
+    if mutation == "second-job":
+        jobs["duplicate"] = deepcopy(first_job)
+    elif mutation == "missing-macos":
+        first_job["strategy"]["matrix"]["os"] = ["ubuntu-latest"]
+    elif mutation == "literal-runner":
+        first_job["runs-on"] = "ubuntu-latest"
     elif mutation == "checkout-ref":
         checkout = next(
             step for step in first_job["steps"] if "actions/checkout@" in step.get("uses", "")
@@ -155,7 +162,9 @@ def _mutated_workflows(tmp_path: Path, mutation: str) -> Path:
     "mutation",
     [
         "second-workflow",
-        "third-job",
+        "second-job",
+        "missing-macos",
+        "literal-runner",
         "checkout-ref",
         "branch-condition",
         "working-directory",
