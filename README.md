@@ -179,6 +179,17 @@ uv run skillctl verify --config my-config
 uv run skillctl status --json --config my-config
 ```
 
+When several agents share one authority configuration, each agent can scope the target-sensitive commands to its own target ID:
+
+```console
+uv run skillctl plan --json --target niles --config my-config
+uv run skillctl apply --target niles --config my-config
+uv run skillctl verify --target niles --config my-config
+uv run skillctl status --json --target niles --config my-config
+```
+
+`--target` accepts one exact ID from `delegations.yaml` on `plan`, `apply`, `verify`, and `status`. It prevents these commands from scanning or changing another configured target root. Omit it to operate on every target, as before. `lock`, `validate`, and `resolve` always cover the complete authority configuration.
+
 Read the [configuration reference](docs/configuration.md) before you use advanced paths or multiple sources.
 
 ## Safe Operation Workflow
@@ -221,11 +232,11 @@ The tool preserves unmanaged target content. A REMOVE also requires a valid mana
 |---|---|---:|
 | `validate` | Validate all five configuration files. | No |
 | `lock` | Resolve sources and write the exact lock. | No |
-| `resolve --json` | Show the desired target state. | No |
-| `plan [--json]` | Compare the desired and current states. | No |
-| `apply [--yes]` | Recompute and immediately apply a new plan. | Yes |
-| `verify` | Verify fresh evidence and write a receipt. | No |
-| `status [--json]` | Report fresh state without a receipt. | No |
+| `resolve --json` | Show the complete authority desired state. | No |
+| `plan [--json] [--target TARGET]` | Compare desired and current state for all targets or one target. | No |
+| `apply [--yes] [--target TARGET]` | Recompute and immediately apply a new plan for all targets or one target. | Yes |
+| `verify [--target TARGET]` | Verify fresh evidence and write a receipt for all targets or one target. | No |
+| `status [--json] [--target TARGET]` | Report fresh state for all targets or one target without a receipt. | No |
 | `update --check` | Observe source changes. | No |
 | `update SOURCE|--all` | Write a candidate exact lock. | No |
 
