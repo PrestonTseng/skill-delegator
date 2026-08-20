@@ -87,6 +87,7 @@ def _assert_ci_contract(workflows_dir: Path) -> None:
     assert list(jobs) == ["test"]
     job = jobs["test"]
     assert job["runs-on"] == "${{ matrix.os }}"
+    assert job["strategy"].get("fail-fast") is False
     matrix = job["strategy"]["matrix"]
     assert matrix == {"os": ["ubuntu-latest", "macos-latest"]}
 
@@ -135,6 +136,10 @@ def _mutated_workflows(tmp_path: Path, mutation: str) -> Path:
         first_job["strategy"]["matrix"]["os"] = ["ubuntu-latest"]
     elif mutation == "literal-runner":
         first_job["runs-on"] = "ubuntu-latest"
+    elif mutation == "fail-fast-default":
+        first_job["strategy"].pop("fail-fast", None)
+    elif mutation == "fail-fast-true":
+        first_job["strategy"]["fail-fast"] = True
     elif mutation == "checkout-ref":
         checkout = next(
             step for step in first_job["steps"] if "actions/checkout@" in step.get("uses", "")
@@ -165,6 +170,8 @@ def _mutated_workflows(tmp_path: Path, mutation: str) -> Path:
         "second-job",
         "missing-macos",
         "literal-runner",
+        "fail-fast-default",
+        "fail-fast-true",
         "checkout-ref",
         "branch-condition",
         "working-directory",

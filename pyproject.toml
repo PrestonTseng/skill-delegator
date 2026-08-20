@@ -44,6 +44,8 @@ testpaths = ["tests"]
 [tool.hatch.build.targets.sdist]
 exclude = [
     "/.superpowers",
+    "/tests/__init__.py",
+    "/tests/conftest.py",
     "/var",
 ]
 

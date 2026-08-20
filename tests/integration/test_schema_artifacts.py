@@ -52,6 +52,21 @@ def test_release_artifact_bytes_match_source_wheel_and_sdist(tmp_path: Path) -> 
         assert not [
             name for name in sdist_members if any(part in f"/{name}" for part in forbidden_parts)
         ]
+        pytest_bootstrap_suffixes = (
+            "/conftest.py",
+            "/tests/__init__.py",
+            "/tests/conftest.py",
+        )
+        assert not [
+            name
+            for name in wheel_archive.namelist()
+            if any(name.endswith(suffix) for suffix in pytest_bootstrap_suffixes)
+        ]
+        assert not [
+            name
+            for name in sdist_members
+            if any(name.endswith(suffix) for suffix in pytest_bootstrap_suffixes)
+        ]
         for source in bundled:
             relative = source.relative_to(project).as_posix()
             if relative.startswith(("schemas/", "docs/")):
