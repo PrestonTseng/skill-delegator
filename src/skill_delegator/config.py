@@ -128,6 +128,10 @@ def _identity(file_stat: os.stat_result) -> tuple[int, int]:
     return file_stat.st_dev, file_stat.st_ino
 
 
+def _entry_identity(file_stat: os.stat_result) -> tuple[int, int, int]:
+    return file_stat.st_dev, file_stat.st_ino, stat.S_IFMT(file_stat.st_mode)
+
+
 def _optional_lstat(name: str, directory_fd: int) -> os.stat_result | None:
     try:
         return os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
@@ -163,30 +167,39 @@ def _read_verified_file(
 
 def _directory_entries(directory_fd: int) -> dict[str, os.stat_result]:
     try:
-        names = sorted(os.listdir(directory_fd), key=os.fsencode)
+        enumeration_fd = os.open(".", _DIRECTORY_OPEN_FLAGS, dir_fd=directory_fd)
     except OSError as error:
-        raise ConfigError(f"delegations/: cannot read directory: {error}") from error
-    if not names:
-        raise ConfigError("delegations/: delegation directory must not be empty")
-
-    entries: dict[str, os.stat_result] = {}
-    for name in names:
-        filename = f"delegations/{name}"
+        raise ConfigError(
+            f"delegations/: cannot open directory for fresh enumeration: {error}"
+        ) from error
+    try:
         try:
-            entry_stat = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            names = sorted(os.listdir(enumeration_fd), key=os.fsencode)
         except OSError as error:
-            raise ConfigError(f"{filename}: cannot inspect entry: {error}") from error
-        if stat.S_ISLNK(entry_stat.st_mode):
-            raise ConfigError(f"{filename}: delegation entry must not be a symlink")
-        if not stat.S_ISREG(entry_stat.st_mode):
-            raise ConfigError(f"{filename}: delegation entry must be a regular YAML file")
-        if not name.endswith(".yaml"):
-            raise ConfigError(f"{filename}: delegation filename must end in .yaml")
-        stem = name.removesuffix(".yaml")
-        if not is_source_id(stem):
-            raise ConfigError(f"{filename}: unsafe delegation filename")
-        entries[name] = entry_stat
-    return entries
+            raise ConfigError(f"delegations/: cannot read directory: {error}") from error
+        if not names:
+            raise ConfigError("delegations/: delegation directory must not be empty")
+
+        entries: dict[str, os.stat_result] = {}
+        for name in names:
+            filename = f"delegations/{name}"
+            try:
+                entry_stat = os.stat(name, dir_fd=enumeration_fd, follow_symlinks=False)
+            except OSError as error:
+                raise ConfigError(f"{filename}: cannot inspect entry: {error}") from error
+            if stat.S_ISLNK(entry_stat.st_mode):
+                raise ConfigError(f"{filename}: delegation entry must not be a symlink")
+            if not stat.S_ISREG(entry_stat.st_mode):
+                raise ConfigError(f"{filename}: delegation entry must be a regular YAML file")
+            if not name.endswith(".yaml"):
+                raise ConfigError(f"{filename}: delegation filename must end in .yaml")
+            stem = name.removesuffix(".yaml")
+            if not is_source_id(stem):
+                raise ConfigError(f"{filename}: unsafe delegation filename")
+            entries[name] = entry_stat
+        return entries
+    finally:
+        os.close(enumeration_fd)
 
 
 @dataclass
@@ -236,7 +249,7 @@ class _DelegationInputs:
 
         current = _directory_entries(self.directory_fd)
         if tuple(current) != tuple(self.discovered) or any(
-            _identity(current[name]) != _identity(discovered_stat)
+            _entry_identity(current[name]) != _entry_identity(discovered_stat)
             for name, discovered_stat in self.discovered.items()
         ):
             raise ConfigError("delegations/: delegation entry set changed while reading")

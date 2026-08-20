@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -258,6 +259,30 @@ def test_per_target_directory_replacement_after_discovery_cannot_substitute_byte
     loaded = load_config(config)
 
     assert loaded.targets[0].root == tmp_path / "targets" / "worker"
+
+
+def test_per_target_entry_added_after_read_changes_entry_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    write_yaml(delegations / "worker.yaml", target_document("worker"))
+    real_read = config_module._read_verified_file
+
+    def add_entry_after_read(
+        directory_fd: int,
+        basename: str,
+        filename: str,
+        discovered_stat: os.stat_result,
+    ) -> bytes:
+        data = real_read(directory_fd, basename, filename, discovered_stat)
+        write_yaml(delegations / "other.yaml", target_document("other"))
+        return data
+
+    monkeypatch.setattr(config_module, "_read_verified_file", add_entry_after_read)
+
+    with pytest.raises(ConfigError, match=r"delegations/.*entry set changed"):
+        load_config(config)
 
 
 def test_per_target_invalid_utf8_is_filename_bearing(tmp_path: Path) -> None:
