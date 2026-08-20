@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 MUTATION_CAPABLE_COMMANDS = frozenset({"apply", "lock", "update", "verify"})
+SAFE_CONFIG = Path(__file__).parent / "fixtures" / "safe-config"
 
 
 class FixtureSafetyError(AssertionError):
@@ -128,8 +129,10 @@ def rewrite_mutation_config(config: Path) -> None:
 
 
 def copy_mutation_config(repository_root: Path, project: Path) -> Path:
+    """Copy fixed generic authority data; retain the first argument for caller compatibility."""
+    del repository_root
     config = project / "config"
-    shutil.copytree(repository_root / "config", config)
+    shutil.copytree(SAFE_CONFIG, config)
     rewrite_mutation_config(config)
     return config
 
@@ -138,7 +141,7 @@ def copy_mutation_fixture(repository_root: Path, tmp_path: Path, name: str = "pr
     project = tmp_path / name
     copy_mutation_config(repository_root, project)
     shutil.copytree(
-        repository_root / "tests" / "fixtures" / "example-source",
+        Path(__file__).parent / "fixtures" / "example-source",
         project / "tests" / "fixtures" / "example-source",
     )
     assert_mutation_fixture_confined(project, tmp_path)
@@ -180,3 +183,33 @@ def assert_mutation_fixture_confined(project: Path, tmp_path: Path) -> None:
 def assert_before_mutation(project: Path, tmp_path: Path, command: str) -> None:
     if command in MUTATION_CAPABLE_COMMANDS:
         assert_mutation_fixture_confined(project, tmp_path)
+
+
+def mutation_policy_violations(path: Path, repository_root: Path) -> tuple[str, ...]:
+    """Reject a module combining mutation commands with repository-config reachability."""
+    import ast
+
+    source = path.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(source, filename=os.fspath(path))
+    except SyntaxError as exc:
+        return (f"{path}:{exc.lineno}: cannot audit syntax",)
+    strings = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    if not strings.intersection(MUTATION_CAPABLE_COMMANDS):
+        return ()
+
+    compact = "".join(source.split())
+    repository_reference = (
+        os.fspath(repository_root) in source
+        or 'REPOSITORY_ROOT/"config"' in compact
+        or "REPOSITORY_ROOT/'config'" in compact
+    )
+    if not repository_reference:
+        return ()
+    return (
+        f"{path}: mutation-safety policy forbids mutation-capable test reachability to repository config",
+    )

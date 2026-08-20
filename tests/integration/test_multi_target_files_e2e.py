@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from skill_delegator import cli
 from tests.fixture_safety import assert_before_mutation, assert_mutation_fixture_confined
 
 TARGET_IDS = ("alpha", "beta", "gamma")
@@ -106,6 +107,23 @@ def _receipt_path(output: str) -> Path:
     return Path(output.strip().split("receipt: ", 1)[1])
 
 
+def _expected_config_hashes(project: Path) -> list[dict[str, str]]:
+    names = [
+        "authority.yaml",
+        *(f"delegations/{target_id}.yaml" for target_id in TARGET_IDS),
+        "pool.yaml",
+        "skill-lock.yaml",
+        "sources.yaml",
+    ]
+    return [
+        {
+            "name": name,
+            "sha256": hashlib.sha256((project / "config" / name).read_bytes()).hexdigest(),
+        }
+        for name in names
+    ]
+
+
 def test_generic_multi_file_scoped_apply_preserves_every_unselected_root(
     tmp_path: Path,
 ) -> None:
@@ -140,12 +158,14 @@ def test_generic_multi_file_scoped_apply_preserves_every_unselected_root(
         assert receipt["operation_summary"]["desired_targets"] == 1
         assert receipt["operation_summary"]["desired_links"] == 1
         assert [item["target_id"] for item in receipt["target_fingerprints"]] == [selected_id]
+        assert receipt["config_hashes"] == _expected_config_hashes(project)
 
         status = json.loads(_run(project, "status", "--json", "--target", selected_id).stdout)
         assert status["result"] == "converged"
         assert status["operation_summary"]["desired_targets"] == 1
         assert status["operation_summary"]["verified_links"] == 1
         assert [item["target_id"] for item in status["target_fingerprints"]] == [selected_id]
+        assert status["config_hashes"] == _expected_config_hashes(project)
 
         assert _run(project, "apply", "--target", selected_id).stdout == "Already converged\n"
         second_receipt = _receipt_path(_run(project, "verify", "--target", selected_id).stdout)
@@ -173,14 +193,29 @@ def test_generic_multi_file_distinct_roots_apply_unscoped(tmp_path: Path) -> Non
     ids=("equal", "parent-child"),
 )
 def test_generic_multi_file_overlapping_roots_fail_unscoped_before_mutation(
-    tmp_path: Path, roots: dict[str, str]
+    tmp_path: Path,
+    roots: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     project = _project(tmp_path, roots)
     targets = project / "targets"
     before = _snapshot(targets)
 
-    result = _run(project, "apply", expected=2)
+    scan_calls = 0
 
-    assert result.stdout == ""
-    assert result.stderr == "Target error: unscoped multi-file target roots overlap\n"
+    def scan_sentinel(*_arguments: object, **_keywords: object) -> object:
+        nonlocal scan_calls
+        scan_calls += 1
+        raise AssertionError("scan_target must not run for overlapping roots")
+
+    monkeypatch.setattr(cli, "scan_target", scan_sentinel)
+    assert_before_mutation(project, tmp_path, "apply")
+    exit_code = cli.main(["apply", "--config", str(project / "config")])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.out == ""
+    assert captured.err == "Target error: unscoped multi-file target roots overlap\n"
+    assert scan_calls == 0
     assert _snapshot(targets) == before

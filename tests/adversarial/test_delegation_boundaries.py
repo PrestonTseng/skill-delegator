@@ -23,7 +23,7 @@ from skill_delegator.models import (
 from skill_delegator.resolver import ResolutionError, resolve_desired_state
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
-EXAMPLE_CONFIG = REPOSITORY_ROOT / "config"
+EXAMPLE_CONFIG = REPOSITORY_ROOT / "tests" / "fixtures" / "safe-config"
 _SHA = "a" * 64
 
 

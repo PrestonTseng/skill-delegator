@@ -1,0 +1,10 @@
+schema_version: 1
+targets:
+  - id: worker
+    root: ../var/example-targets/worker
+    grants:
+      - example/hello
+  - id: reviewer
+    root: ../var/example-targets/reviewer
+    grants:
+      - example/hello

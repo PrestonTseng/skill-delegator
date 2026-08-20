@@ -20,18 +20,14 @@ def test_release_artifact_bytes_match_source_wheel_and_sdist(tmp_path: Path) -> 
     wheel = next(dist.glob("*.whl"))
     sdist = next(dist.glob("*.tar.gz"))
     schemas = sorted((project / "schemas").glob("*.schema.json"))
+    config_files = sorted(path for path in (project / "config").rglob("*") if path.is_file())
     bundled = [
         *schemas,
         project / "docs" / "architecture.md",
         project / "docs" / "configuration.md",
         project / "docs" / "update-workflow.md",
         project / "docs" / "threat-model.md",
-        project / "config" / "README.md",
-        project / "config" / "authority.yaml",
-        project / "config" / "sources.yaml",
-        project / "config" / "pool.yaml",
-        project / "config" / "delegations.yaml",
-        project / "config" / "skill-lock.yaml",
+        *config_files,
         project / "tests" / "fixtures" / "example-source" / "hello" / "SKILL.md",
     ]
 

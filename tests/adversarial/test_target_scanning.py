@@ -11,7 +11,7 @@ from pathlib import Path
 import yaml
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
-EXAMPLE_CONFIG = REPOSITORY_ROOT / "config"
+EXAMPLE_CONFIG = REPOSITORY_ROOT / "tests" / "fixtures" / "safe-config"
 
 
 def _snapshot(root: Path) -> tuple[tuple[str, str, str], ...]:

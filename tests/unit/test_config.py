@@ -17,7 +17,7 @@ from skill_delegator.errors import ConfigError
 from skill_delegator.schema_validation import schema_text
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
-EXAMPLE_CONFIG = REPOSITORY_ROOT / "config"
+EXAMPLE_CONFIG = REPOSITORY_ROOT / "tests" / "fixtures" / "safe-config"
 CONFIG_FILENAMES = (
     "authority.yaml",
     "sources.yaml",
@@ -334,7 +334,7 @@ def test_main_example_parses_with_safe_lexical_target_roots() -> None:
     assert len(config.sources) == 1
     assert len(config.pool) == 1
     assert len(config.targets) == 2
-    expected_parent = (REPOSITORY_ROOT / "var" / "example-targets").resolve()
+    expected_parent = (EXAMPLE_CONFIG.parent / "var" / "example-targets").resolve()
     assert all(target.root.is_relative_to(expected_parent) for target in config.targets)
     assert (
         config.sources[0].location

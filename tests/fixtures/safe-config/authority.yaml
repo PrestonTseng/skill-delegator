@@ -1,0 +1,5 @@
+schema_version: 1
+authority:
+  id: main-example
+  fail_closed: true
+  fixture_policy: safe-main-example
