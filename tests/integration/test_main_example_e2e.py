@@ -4,22 +4,19 @@ import hashlib
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
-from tests.fixture_safety import assert_before_mutation, copy_mutation_fixture
+from tests.fixture_safety import copy_mutation_fixture, run_cli
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 
 
 def _run(project: Path, *arguments: str, expected: int = 0) -> subprocess.CompletedProcess[str]:
-    assert_before_mutation(project, project.parent, arguments[0])
-    result = subprocess.run(
-        [sys.executable, "-m", "skill_delegator.cli", *arguments],
+    result = run_cli(
+        project / "config",
+        project.parent,
+        [*arguments, "--config", str(project / "config")],
         cwd=project,
-        capture_output=True,
-        text=True,
-        check=False,
     )
     assert result.returncode == expected, (arguments, result.stdout, result.stderr)
     assert "Traceback" not in result.stderr

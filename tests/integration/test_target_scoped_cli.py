@@ -8,7 +8,7 @@ import yaml
 
 from skill_delegator import cli as cli_module
 from skill_delegator import verifier as verifier_module
-from skill_delegator.cli import main
+from tests.fixture_safety import run_cli
 
 
 def _write_config(project: Path) -> Path:
@@ -46,7 +46,7 @@ def _write_config(project: Path) -> Path:
     }
     for filename, document in documents.items():
         (config / filename).write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
-    assert main(["lock", "--config", str(config)]) == 0
+    assert run_cli(config, config.parent.parent, ["lock", "--config", str(config)]) == 0
     return config
 
 
@@ -79,23 +79,47 @@ def test_target_scoped_workflow_only_reads_and_mutates_selected_target(
     hostile.parent.mkdir(parents=True)
     hostile.write_text("unmanaged", encoding="utf-8")
 
-    assert main(["plan", "--json", "--target", "niles", "--config", str(config)]) == 1
+    assert (
+        run_cli(
+            config,
+            config.parent.parent,
+            ["plan", "--json", "--target", "niles", "--config", str(config)],
+        )
+        == 1
+    )
     plan = json.loads(capsys.readouterr().out)
     assert {operation["target_id"] for operation in plan["operations"]} == {"niles"}
 
-    assert main(["apply", "--target", "niles", "--config", str(config)]) == 0
+    assert (
+        run_cli(
+            config, config.parent.parent, ["apply", "--target", "niles", "--config", str(config)]
+        )
+        == 0
+    )
     applied = capsys.readouterr()
     assert applied.out == "Applied 1 change to 1 target\n"
     assert hostile.read_text(encoding="utf-8") == "unmanaged"
     assert (project / "targets" / "niles" / "example" / "one").is_symlink()
 
-    assert main(["status", "--json", "--target", "niles", "--config", str(config)]) == 0
+    assert (
+        run_cli(
+            config,
+            config.parent.parent,
+            ["status", "--json", "--target", "niles", "--config", str(config)],
+        )
+        == 0
+    )
     status = json.loads(capsys.readouterr().out)
     assert status["result"] == "converged"
     assert status["operation_summary"]["desired_targets"] == 1
     assert [item["target_id"] for item in status["target_fingerprints"]] == ["niles"]
 
-    assert main(["verify", "--target", "niles", "--config", str(config)]) == 0
+    assert (
+        run_cli(
+            config, config.parent.parent, ["verify", "--target", "niles", "--config", str(config)]
+        )
+        == 0
+    )
     verified = capsys.readouterr()
     assert "converged: 1/1 links verified across 1 target" in verified.out
     assert hostile.read_text(encoding="utf-8") == "unmanaged"
@@ -109,7 +133,7 @@ def test_target_scoped_commands_reject_unknown_target_without_mutation(
     config = _write_config(project)
     capsys.readouterr()
     arguments = [command, "--target", "missing", "--config", str(config)]
-    assert main(arguments) == 2
+    assert run_cli(config, config.parent.parent, arguments) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "Target error: unknown target selector\n"
@@ -127,7 +151,12 @@ def test_target_scope_keeps_whole_authority_collision_validation(tmp_path: Path,
         yaml.safe_dump(delegations, sort_keys=False), encoding="utf-8"
     )
 
-    assert main(["apply", "--target", "niles", "--config", str(config)]) == 2
+    assert (
+        run_cli(
+            config, config.parent.parent, ["apply", "--target", "niles", "--config", str(config)]
+        )
+        == 2
+    )
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "target path collision" in captured.err
@@ -156,7 +185,14 @@ def test_multi_file_equal_roots_allow_scoped_plan_and_scan_only_selected_target(
 
     monkeypatch.setattr(cli_module, "scan_target", recording_scan)
 
-    assert main(["plan", "--json", "--target", "worker", "--config", str(config)]) == 1
+    assert (
+        run_cli(
+            config,
+            config.parent.parent,
+            ["plan", "--json", "--target", "worker", "--config", str(config)],
+        )
+        == 1
+    )
     plan = json.loads(capsys.readouterr().out)
     assert {operation["target_id"] for operation in plan["operations"]} == {"worker"}
     assert scanned == ["worker"]
@@ -189,7 +225,7 @@ def test_unscoped_multi_file_overlapping_roots_fail_before_target_scan(
     monkeypatch.setattr(cli_module, "scan_target", forbidden_scan)
     monkeypatch.setattr(verifier_module, "scan_target", forbidden_scan)
 
-    assert main([command, "--config", str(config)]) == 2
+    assert run_cli(config, config.parent.parent, [command, "--config", str(config)]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "Target error: unscoped multi-file target roots overlap\n"
@@ -209,7 +245,7 @@ def test_unscoped_multi_file_distinct_roots_reach_both_targets(tmp_path: Path, c
         },
     )
 
-    assert main(["plan", "--json", "--config", str(config)]) == 1
+    assert run_cli(config, config.parent.parent, ["plan", "--json", "--config", str(config)]) == 1
     plan = json.loads(capsys.readouterr().out)
     assert {operation["target_id"] for operation in plan["operations"]} == {
         "reviewer",
@@ -230,7 +266,12 @@ def test_invalid_target_selector_has_bounded_single_line_error(
     config = _write_config(tmp_path / "project")
     capsys.readouterr()
 
-    assert main(["apply", "--target", selector, "--config", str(config)]) == 2
+    assert (
+        run_cli(
+            config, config.parent.parent, ["apply", "--target", selector, "--config", str(config)]
+        )
+        == 2
+    )
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == message

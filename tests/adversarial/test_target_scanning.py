@@ -5,10 +5,11 @@ import os
 import shutil
 import stat
 import subprocess
-import sys
 from pathlib import Path
 
 import yaml
+
+from tests.fixture_safety import run_cli
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 EXAMPLE_CONFIG = REPOSITORY_ROOT / "tests" / "fixtures" / "safe-config"
@@ -80,10 +81,10 @@ def _metadata(target: Path, source: Path) -> None:
 
 
 def _run(config: Path, *, json_output: bool) -> subprocess.CompletedProcess[bytes]:
-    command = [sys.executable, "-m", "skill_delegator.cli", "plan", "--config", str(config)]
+    command = ["plan", "--config", str(config)]
     if json_output:
         command.append("--json")
-    return subprocess.run(command, cwd=REPOSITORY_ROOT, check=False, capture_output=True)
+    return run_cli(config, config.parent.parent, command, cwd=REPOSITORY_ROOT, text=False)
 
 
 def test_plan_cli_exit_codes_repeatable_output_and_zero_mutation_for_all_paths(

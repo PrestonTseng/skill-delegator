@@ -178,6 +178,7 @@ def test_policy_detects_direct_alias_and_wrapper_repository_config_invocations(
     path.write_text(
         """from pathlib import Path
 import subprocess as process
+import skill_delegator.cli as direct_cli
 from skill_delegator.cli import main as invoke
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
@@ -192,14 +193,18 @@ def test_direct():
 
 def test_wrapper():
     wrapper(ARGS)
+
+def test_module_alias():
+    direct_cli.main(ARGS)
 """,
         encoding="utf-8",
     )
 
     violations = mutation_policy_violations(path, REPOSITORY_ROOT)
 
-    assert len(violations) == 1
-    assert "repository config" in violations[0]
+    assert len(violations) == 3
+    assert any("process-launch" in violation for violation in violations)
+    assert any("production CLI entrypoint" in violation for violation in violations)
 
 
 def test_pytest_policy_gate_rejects_repository_config_before_test_body(
@@ -212,17 +217,19 @@ def test_pytest_policy_gate_rejects_repository_config_before_test_body(
 import subprocess
 
 REPOSITORY_ROOT = Path({os.fspath(REPOSITORY_ROOT)!r})
-CONFIG = REPOSITORY_ROOT / "config"
+COMMAND = "ap" + "ply"
+CONFIG_NAME = "con" + "fig"
+CONFIG = REPOSITORY_ROOT.joinpath(CONFIG_NAME)
 
 def fake_run(arguments):
     Path({os.fspath(sentinel)!r}).write_text("body executed")
 
-def invoke(arguments):
+def wrapper(arguments):
     return subprocess.run(arguments)
 
 def test_forbidden():
     subprocess.run = fake_run
-    invoke(["apply", "--config", str(CONFIG)])
+    wrapper([COMMAND, "--config", str(CONFIG)])
 """,
         encoding="utf-8",
     )

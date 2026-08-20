@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
-import sys
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
@@ -21,6 +19,7 @@ from skill_delegator.models import (
     TargetSpec,
 )
 from skill_delegator.resolver import ResolutionError, resolve_desired_state
+from tests.fixture_safety import run_cli
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 EXAMPLE_CONFIG = REPOSITORY_ROOT / "tests" / "fixtures" / "safe-config"
@@ -153,21 +152,14 @@ def test_resolve_cli_json_is_repeatable_and_does_not_touch_target_roots(tmp_path
     (config_dir / "delegations.yaml").write_text(yaml.safe_dump(document, sort_keys=False))
     before = {root: snapshot(root) for root in target_roots}
     command = [
-        sys.executable,
-        "-m",
-        "skill_delegator.cli",
         "resolve",
         "--json",
         "--config",
         str(config_dir),
     ]
 
-    first = subprocess.run(
-        command, cwd=REPOSITORY_ROOT, capture_output=True, text=True, check=False
-    )
-    second = subprocess.run(
-        command, cwd=REPOSITORY_ROOT, capture_output=True, text=True, check=False
-    )
+    first = run_cli(config_dir, tmp_path, command, cwd=REPOSITORY_ROOT)
+    second = run_cli(config_dir, tmp_path, command, cwd=REPOSITORY_ROOT)
 
     assert first.returncode == second.returncode == 0
     assert first.stderr == second.stderr == ""
@@ -209,20 +201,16 @@ def test_resolve_cli_rejects_source_authority_binding_without_output_or_writes(
         tmp_path / "var" / "example-targets" / "reviewer",
     )
 
-    result = subprocess.run(
+    result = run_cli(
+        config_dir,
+        tmp_path,
         [
-            sys.executable,
-            "-m",
-            "skill_delegator.cli",
             "resolve",
             "--json",
             "--config",
             str(config_dir),
         ],
         cwd=REPOSITORY_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
     )
 
     assert result.returncode == 2

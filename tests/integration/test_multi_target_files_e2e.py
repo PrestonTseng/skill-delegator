@@ -5,26 +5,23 @@ import json
 import os
 import stat
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 import yaml
 
 from skill_delegator import cli
-from tests.fixture_safety import assert_before_mutation, assert_mutation_fixture_confined
+from tests.fixture_safety import assert_mutation_fixture_confined, run_cli
 
 TARGET_IDS = ("alpha", "beta", "gamma")
 
 
 def _run(project: Path, *arguments: str, expected: int = 0) -> subprocess.CompletedProcess[str]:
-    assert_before_mutation(project, project.parent, arguments[0])
-    result = subprocess.run(
-        [sys.executable, "-m", "skill_delegator.cli", *arguments],
+    result = run_cli(
+        project / "config",
+        project.parent,
+        [*arguments, "--config", str(project / "config")],
         cwd=project,
-        capture_output=True,
-        text=True,
-        check=False,
     )
     assert result.returncode == expected, (arguments, result.stdout, result.stderr)
     assert "Traceback" not in result.stderr
@@ -210,8 +207,9 @@ def test_generic_multi_file_overlapping_roots_fail_unscoped_before_mutation(
         raise AssertionError("scan_target must not run for overlapping roots")
 
     monkeypatch.setattr(cli, "scan_target", scan_sentinel)
-    assert_before_mutation(project, tmp_path, "apply")
-    exit_code = cli.main(["apply", "--config", str(project / "config")])
+    exit_code = run_cli(
+        project / "config", tmp_path, ["apply", "--config", str(project / "config")]
+    )
     captured = capsys.readouterr()
 
     assert exit_code == 2

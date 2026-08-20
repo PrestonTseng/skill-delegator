@@ -4,37 +4,32 @@ import errno
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 import yaml
 
 from skill_delegator import source_store
-from skill_delegator.cli import main
-from tests.fixture_safety import assert_before_mutation, copy_mutation_config
+from tests.fixture_safety import copy_mutation_config, run_cli
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 
 
 def run_lock(config_dir: Path) -> subprocess.CompletedProcess[str]:
-    assert_before_mutation(config_dir.parent, config_dir.parent.parent, "lock")
-    return subprocess.run(
-        [sys.executable, "-m", "skill_delegator.cli", "lock", "--config", str(config_dir)],
+    return run_cli(
+        config_dir,
+        config_dir.parent.parent,
+        ["lock", "--config", str(config_dir)],
         cwd=REPOSITORY_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
     )
 
 
 def run_validate(config_dir: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-m", "skill_delegator.cli", "validate", "--config", str(config_dir)],
+    return run_cli(
+        config_dir,
+        config_dir.parent.parent,
+        ["validate", "--config", str(config_dir)],
         cwd=REPOSITORY_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
     )
 
 
@@ -122,20 +117,16 @@ def test_hidden_configured_skill_root_lock_validates_loads_and_resolves(tmp_path
     locked = run_lock(config_dir)
     document = yaml.safe_load((config_dir / "skill-lock.yaml").read_text(encoding="utf-8"))
     validated = run_validate(config_dir)
-    resolved = subprocess.run(
+    resolved = run_cli(
+        config_dir,
+        tmp_path,
         [
-            sys.executable,
-            "-m",
-            "skill_delegator.cli",
             "resolve",
             "--json",
             "--config",
             str(config_dir),
         ],
         cwd=REPOSITORY_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
     )
 
     assert locked.returncode == 0, locked.stderr
@@ -229,8 +220,7 @@ def test_lock_cli_wraps_posix_competing_directory_race_as_precise_exit_2(
 
     monkeypatch.setattr(source_store.os, "rename", compete)
 
-    assert_before_mutation(project, tmp_path, "lock")
-    result = main(["lock", "--config", str(config_dir)])
+    result = run_cli(config_dir, tmp_path, ["lock", "--config", str(config_dir)])
     captured = capsys.readouterr()
 
     assert result == 2
