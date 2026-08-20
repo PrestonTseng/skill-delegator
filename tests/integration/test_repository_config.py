@@ -2,6 +2,7 @@ import json
 import re
 import shlex
 import stat
+import tomllib
 from copy import deepcopy
 from pathlib import Path
 
@@ -17,6 +18,11 @@ REPOSITORY_ROOT = Path(__file__).parents[2]
 
 def test_checked_out_repository_config_validates() -> None:
     load_config(REPOSITORY_ROOT / "config")
+
+
+def test_ruff_excludes_provenance_bound_skill_source_snapshots() -> None:
+    project = tomllib.loads((REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert project["tool"]["ruff"]["extend-exclude"] == ["src/skill_source"]
 
 
 def test_equal_container_root_singular_examples_are_schema_valid_and_use_the_shared_pool() -> None:
