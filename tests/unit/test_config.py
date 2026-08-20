@@ -188,7 +188,7 @@ def test_per_target_directory_rejects_nested_or_non_yaml_entries(
     else:
         entry.mkdir()
 
-    with pytest.raises(ConfigError, match=rf"delegations/{entry_name.replace('.', r'\.')}" ):
+    with pytest.raises(ConfigError, match=rf"delegations/{entry_name.replace('.', r'\.')}"):
         load_config(config)
 
 
@@ -213,6 +213,51 @@ def test_per_target_directory_itself_cannot_be_a_symlink(tmp_path: Path) -> None
 
     with pytest.raises(ConfigError, match=r"delegations/.*symlink"):
         load_config(config)
+
+
+def test_per_target_regular_file_is_read_from_discovered_directory(tmp_path: Path) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    write_yaml(delegations / "worker.yaml", target_document("worker"))
+
+    loaded = load_config(config)
+
+    assert loaded.targets[0].id == "worker"
+    assert loaded.targets[0].root == tmp_path / "targets" / "worker"
+
+
+def test_per_target_directory_replacement_after_discovery_cannot_substitute_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = copy_config(tmp_path)
+    delegations = use_per_target_delegations(config)
+    write_yaml(delegations / "worker.yaml", target_document("worker"))
+    outside = tmp_path / "outside-delegations"
+    outside.mkdir()
+    write_yaml(
+        outside / "worker.yaml",
+        {
+            **target_document("worker"),
+            "target": {
+                **target_document("worker")["target"],
+                "root": "../targets/substituted",
+            },
+        },
+    )
+    discovered = tmp_path / "discovered-delegations"
+    real_discovery = config_module._delegation_input_names
+
+    def replace_directory_after_discovery(config_dir: Path):
+        result = real_discovery(config_dir)
+        delegations.rename(discovered)
+        delegations.symlink_to(outside, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(config_module, "_delegation_input_names", replace_directory_after_discovery)
+
+    loaded = load_config(config)
+
+    assert loaded.targets[0].root == tmp_path / "targets" / "worker"
 
 
 def test_per_target_invalid_utf8_is_filename_bearing(tmp_path: Path) -> None:

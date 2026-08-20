@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 import os
 import stat
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
 from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError
 from referencing import Registry, Resource
 
 from skill_delegator.errors import ConfigError
@@ -63,25 +66,36 @@ _UniqueKeySafeLoader.add_constructor(
 )
 
 
-def _load_document(config_dir: Path, filename: str, schema_name: str) -> dict[str, Any]:
-    path = config_dir / filename
+def _parse_document_bytes(
+    data: bytes,
+    filename: str,
+    validation_errors: Callable[[Any], tuple[ValidationError, ...]],
+) -> dict[str, Any]:
     try:
-        text = path.read_text(encoding="utf-8")
+        text = data.decode("utf-8")
     except UnicodeError as error:
         raise ConfigError(f"{filename}: invalid UTF-8: {error}") from error
-    except OSError as error:
-        raise ConfigError(f"{filename}: cannot read file: {error}") from error
     try:
         document = yaml.load(text, Loader=_UniqueKeySafeLoader)
     except yaml.YAMLError as error:
         raise ConfigError(f"{filename}: invalid YAML: {error}") from error
 
-    errors = schema_errors(document, schema_name)
+    errors = validation_errors(document)
     if errors:
         error = errors[0]
         location = schema_error_location(error)
         raise ConfigError(f"{filename} at {location}: {error.message}")
     return document
+
+
+def _load_document(config_dir: Path, filename: str, schema_name: str) -> dict[str, Any]:
+    try:
+        data = (config_dir / filename).read_bytes()
+    except OSError as error:
+        raise ConfigError(f"{filename}: cannot read file: {error}") from error
+    return _parse_document_bytes(
+        data, filename, lambda document: schema_errors(document, schema_name)
+    )
 
 
 def _target_schema_errors(document: Any) -> tuple[Any, ...]:
@@ -104,92 +118,198 @@ def _target_schema_errors(document: Any) -> tuple[Any, ...]:
     )
 
 
-def _load_target_document(config_dir: Path, filename: str) -> dict[str, Any]:
-    path = config_dir / filename
+_FILE_OPEN_FLAGS = (
+    os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
+)
+_DIRECTORY_OPEN_FLAGS = _FILE_OPEN_FLAGS | os.O_DIRECTORY
+
+
+def _identity(file_stat: os.stat_result) -> tuple[int, int]:
+    return file_stat.st_dev, file_stat.st_ino
+
+
+def _optional_lstat(name: str, directory_fd: int) -> os.stat_result | None:
     try:
-        if path.is_symlink():
-            raise ConfigError(f"{filename}: delegation file must not be a symlink")
-        text = path.read_text(encoding="utf-8")
-    except UnicodeError as error:
-        raise ConfigError(f"{filename}: invalid UTF-8: {error}") from error
+        return os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+
+
+def _read_verified_file(
+    directory_fd: int,
+    basename: str,
+    filename: str,
+    discovered_stat: os.stat_result,
+) -> bytes:
+    try:
+        file_fd = os.open(basename, _FILE_OPEN_FLAGS, dir_fd=directory_fd)
+    except OSError as error:
+        raise ConfigError(f"{filename}: cannot open no-follow file: {error}") from error
+    try:
+        opened_stat = os.fstat(file_fd)
+        if not stat.S_ISREG(opened_stat.st_mode):
+            raise ConfigError(f"{filename}: delegation input must be a regular file")
+        if _identity(opened_stat) != _identity(discovered_stat):
+            raise ConfigError(f"{filename}: delegation file changed after discovery")
+        with os.fdopen(file_fd, "rb") as stream:
+            file_fd = -1
+            return stream.read()
     except OSError as error:
         raise ConfigError(f"{filename}: cannot read file: {error}") from error
+    finally:
+        if file_fd >= 0:
+            os.close(file_fd)
+
+
+def _directory_entries(directory_fd: int) -> dict[str, os.stat_result]:
     try:
-        document = yaml.load(text, Loader=_UniqueKeySafeLoader)
-    except yaml.YAMLError as error:
-        raise ConfigError(f"{filename}: invalid YAML: {error}") from error
-
-    errors = _target_schema_errors(document)
-    if errors:
-        error = errors[0]
-        location = schema_error_location(error)
-        raise ConfigError(f"{filename} at {location}: {error.message}")
-    return document
-
-
-def _delegation_input_names(config_dir: Path) -> tuple[str, tuple[str, ...]]:
-    """Discover exactly one delegation form without following symlinks."""
-
-    legacy = config_dir / "delegations.yaml"
-    directory = config_dir / "delegations"
-    legacy_exists = os.path.lexists(legacy)
-    directory_exists = os.path.lexists(directory)
-
-    if legacy_exists and directory_exists:
-        raise ConfigError("delegations.yaml and delegations/ cannot both be present")
-    if not legacy_exists and not directory_exists:
-        raise ConfigError("delegations.yaml or delegations/ must be present")
-
-    if legacy_exists:
-        try:
-            mode = legacy.lstat().st_mode
-        except OSError as error:
-            raise ConfigError(f"delegations.yaml: cannot inspect file: {error}") from error
-        if stat.S_ISLNK(mode):
-            raise ConfigError("delegations.yaml: delegation file must not be a symlink")
-        if not stat.S_ISREG(mode):
-            raise ConfigError("delegations.yaml: delegation input must be a regular file")
-        return "single", ("delegations.yaml",)
-
-    try:
-        directory_mode = directory.lstat().st_mode
-    except OSError as error:
-        raise ConfigError(f"delegations/: cannot inspect directory: {error}") from error
-    if stat.S_ISLNK(directory_mode):
-        raise ConfigError("delegations/: delegation directory must not be a symlink")
-    if not stat.S_ISDIR(directory_mode):
-        raise ConfigError("delegations/: delegation input must be a directory")
-
-    try:
-        entries = sorted(os.scandir(directory), key=lambda entry: os.fsencode(entry.name))
+        names = sorted(os.listdir(directory_fd), key=os.fsencode)
     except OSError as error:
         raise ConfigError(f"delegations/: cannot read directory: {error}") from error
-    if not entries:
+    if not names:
         raise ConfigError("delegations/: delegation directory must not be empty")
 
-    filenames: list[str] = []
-    for entry in entries:
-        filename = f"delegations/{entry.name}"
-        if entry.is_symlink():
+    entries: dict[str, os.stat_result] = {}
+    for name in names:
+        filename = f"delegations/{name}"
+        try:
+            entry_stat = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        except OSError as error:
+            raise ConfigError(f"{filename}: cannot inspect entry: {error}") from error
+        if stat.S_ISLNK(entry_stat.st_mode):
             raise ConfigError(f"{filename}: delegation entry must not be a symlink")
-        if not entry.is_file(follow_symlinks=False):
+        if not stat.S_ISREG(entry_stat.st_mode):
             raise ConfigError(f"{filename}: delegation entry must be a regular YAML file")
-        if not entry.name.endswith(".yaml"):
+        if not name.endswith(".yaml"):
             raise ConfigError(f"{filename}: delegation filename must end in .yaml")
-        stem = entry.name.removesuffix(".yaml")
+        stem = name.removesuffix(".yaml")
         if not is_source_id(stem):
             raise ConfigError(f"{filename}: unsafe delegation filename")
-        filenames.append(filename)
-    return "multiple", tuple(filenames)
+        entries[name] = entry_stat
+    return entries
+
+
+@dataclass
+class _DelegationInputs:
+    mode: str
+    names: tuple[str, ...]
+    config_fd: int
+    discovered: dict[str, os.stat_result]
+    directory_fd: int | None = None
+
+    def close(self) -> None:
+        if self.directory_fd is not None:
+            os.close(self.directory_fd)
+            self.directory_fd = None
+        if self.config_fd >= 0:
+            os.close(self.config_fd)
+            self.config_fd = -1
+
+    def load_documents(self) -> tuple[dict[str, Any], ...]:
+        if self.mode == "single":
+            discovered_stat = self.discovered["delegations.yaml"]
+            data = _read_verified_file(
+                self.config_fd,
+                "delegations.yaml",
+                "delegations.yaml",
+                discovered_stat,
+            )
+            current_stat = _optional_lstat("delegations.yaml", self.config_fd)
+            if current_stat is None or _identity(current_stat) != _identity(discovered_stat):
+                raise ConfigError("delegations.yaml: delegation file changed while reading")
+            return (
+                _parse_document_bytes(
+                    data,
+                    "delegations.yaml",
+                    lambda document: schema_errors(document, "delegations.schema.json"),
+                ),
+            )
+
+        assert self.directory_fd is not None
+        documents = []
+        for filename in self.names:
+            basename = filename.removeprefix("delegations/")
+            data = _read_verified_file(
+                self.directory_fd, basename, filename, self.discovered[basename]
+            )
+            documents.append(_parse_document_bytes(data, filename, _target_schema_errors))
+
+        current = _directory_entries(self.directory_fd)
+        if tuple(current) != tuple(self.discovered) or any(
+            _identity(current[name]) != _identity(discovered_stat)
+            for name, discovered_stat in self.discovered.items()
+        ):
+            raise ConfigError("delegations/: delegation entry set changed while reading")
+        return tuple(documents)
+
+
+def _delegation_input_names(config_dir: Path) -> _DelegationInputs:
+    """Discover exactly one delegation form without following symlinks."""
+
+    try:
+        config_fd = os.open(config_dir, _DIRECTORY_OPEN_FLAGS)
+    except OSError as error:
+        raise ConfigError(
+            f"cannot open configuration directory without following symlinks: {error}"
+        ) from error
+
+    directory_fd: int | None = None
+    try:
+        legacy_stat = _optional_lstat("delegations.yaml", config_fd)
+        directory_stat = _optional_lstat("delegations", config_fd)
+        legacy_exists = legacy_stat is not None
+        directory_exists = directory_stat is not None
+
+        if legacy_exists and directory_exists:
+            raise ConfigError("delegations.yaml and delegations/ cannot both be present")
+        if not legacy_exists and not directory_exists:
+            raise ConfigError("delegations.yaml or delegations/ must be present")
+
+        if legacy_stat is not None:
+            if stat.S_ISLNK(legacy_stat.st_mode):
+                raise ConfigError("delegations.yaml: delegation file must not be a symlink")
+            if not stat.S_ISREG(legacy_stat.st_mode):
+                raise ConfigError("delegations.yaml: delegation input must be a regular file")
+            return _DelegationInputs(
+                "single", ("delegations.yaml",), config_fd, {"delegations.yaml": legacy_stat}
+            )
+
+        assert directory_stat is not None
+        if stat.S_ISLNK(directory_stat.st_mode):
+            raise ConfigError("delegations/: delegation directory must not be a symlink")
+        if not stat.S_ISDIR(directory_stat.st_mode):
+            raise ConfigError("delegations/: delegation input must be a directory")
+
+        try:
+            directory_fd = os.open("delegations", _DIRECTORY_OPEN_FLAGS, dir_fd=config_fd)
+        except OSError as error:
+            raise ConfigError(f"delegations/: cannot open no-follow directory: {error}") from error
+        opened_stat = os.fstat(directory_fd)
+        if not stat.S_ISDIR(opened_stat.st_mode):
+            raise ConfigError("delegations/: delegation input must be a directory")
+        if _identity(opened_stat) != _identity(directory_stat):
+            raise ConfigError("delegations/: delegation directory changed after discovery")
+
+        entries = _directory_entries(directory_fd)
+        names = tuple(f"delegations/{name}" for name in entries)
+        return _DelegationInputs("multiple", names, config_fd, entries, directory_fd)
+    except BaseException:
+        if directory_fd is not None:
+            os.close(directory_fd)
+        os.close(config_fd)
+        raise
 
 
 def config_input_names(config_dir: Path) -> tuple[str, ...]:
     """Return deterministic POSIX-relative names of desired-state inputs."""
 
     config_dir = config_dir.resolve(strict=False)
-    _, delegation_names = _delegation_input_names(config_dir)
-    common = tuple(name for name in _CONFIG_SCHEMAS if name != "delegations.yaml")
-    return tuple(sorted((*common, *delegation_names), key=os.fsencode))
+    delegation_inputs = _delegation_input_names(config_dir)
+    try:
+        common = tuple(name for name in _CONFIG_SCHEMAS if name != "delegations.yaml")
+        return tuple(sorted((*common, *delegation_inputs.names), key=os.fsencode))
+    finally:
+        delegation_inputs.close()
 
 
 def _ensure_unique_ids(items: list[dict[str, Any]], kind: str) -> None:
@@ -252,25 +372,28 @@ def load_config(
     """Load and validate one authority without reading source or target contents."""
 
     config_dir = config_dir.resolve(strict=False)
-    delegation_mode, delegation_names = _delegation_input_names(config_dir)
-    documents = {
-        filename: _load_document(config_dir, filename, schema)
-        for filename, schema in _CONFIG_SCHEMAS.items()
-        if filename != "delegations.yaml"
-        if require_lock or filename != "skill-lock.yaml"
-    }
+    delegation_inputs = _delegation_input_names(config_dir)
+    try:
+        documents = {
+            filename: _load_document(config_dir, filename, schema)
+            for filename, schema in _CONFIG_SCHEMAS.items()
+            if filename != "delegations.yaml"
+            if require_lock or filename != "skill-lock.yaml"
+        }
+        delegation_documents = delegation_inputs.load_documents()
+    finally:
+        delegation_inputs.close()
+
+    delegation_mode = delegation_inputs.mode
+    delegation_names = delegation_inputs.names
     if delegation_mode == "single":
-        delegation_document = _load_document(
-            config_dir, "delegations.yaml", "delegations.schema.json"
-        )
+        delegation_document = delegation_documents[0]
         target_records = [
-            (entry, "delegations.yaml", "shared")
-            for entry in delegation_document["targets"]
+            (entry, "delegations.yaml", "shared") for entry in delegation_document["targets"]
         ]
     else:
         target_records = []
-        for filename in delegation_names:
-            document = _load_target_document(config_dir, filename)
+        for filename, document in zip(delegation_names, delegation_documents, strict=True):
             entry = document["target"]
             target_records.append((entry, filename, filename))
 
@@ -340,8 +463,7 @@ def load_config(
             lexical_root = _lexical_absolute(config_dir, raw_root)
             if not lexical_root.is_relative_to(safe_parent):
                 raise ConfigError(
-                    f"{filename}: main example target roots must resolve under "
-                    "var/example-targets/"
+                    f"{filename}: main example target roots must resolve under var/example-targets/"
                 )
             if target_scope is None or target["id"] == target_scope:
                 try:
@@ -370,9 +492,7 @@ def load_config(
             grants=tuple(entry["grants"]),
             deployment_scope=deployment_scope,
         )
-        for entry, _, deployment_scope in sorted(
-            target_records, key=lambda record: record[0]["id"]
-        )
+        for entry, _, deployment_scope in sorted(target_records, key=lambda record: record[0]["id"])
     )
     return AuthorityConfig(
         authority_id=authority["id"],
