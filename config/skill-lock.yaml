@@ -90,6 +90,15 @@ sources:
     runtime_name: watch
     path: skills/watch
     sha256: 8ffb5f0a34797ff88cc8fa1a596420299548b33be49d3e5105a66cf7c0eefdf3
+- source_id: diagram-design
+  type: git
+  resolved_commit: e011b04af8297aebe5c310e0febda723cbe6af79
+  tree_hash: f25d6e2b9f68332de5a83691f25f143e4c21c0acaa92c8b5e2ca800f1d82ecaf
+  skills:
+  - canonical_id: diagram-design/diagram-design
+    runtime_name: diagram-design
+    path: skills/diagram-design
+    sha256: ef9b69c8e7888a6788f1ba9d405ff108b911798fcda7f3e64859353c49a5eb20
 - source_id: humanizer-zh-tw
   type: filesystem
   tree_hash: db6f0642a6855d3e791119eaa8f56dd411f5edeb50a2dc5c7e89d1059b7092f9
@@ -185,7 +194,7 @@ sources:
 - source_id: mattpocock
   type: git
   resolved_commit: 885e2ca4d842d139e9aef4e48d366c63cb1b8013
-  tree_hash: 9d8be0a6a4451f42406b2bfed7a4e36cb7d50273ded9f9cce7ef5a78df0d27cd
+  tree_hash: 3dca97a5763aa22cf5cacee6fffa827198869337b9a73a26d1563ec652d4ca6b
   skills:
   - canonical_id: mattpocock/engineering/ask-matt
     runtime_name: ask-matt
@@ -467,7 +476,7 @@ sources:
 - source_id: superpowers
   type: git
   resolved_commit: b36e0829c6d0140e93cfef2ca599b1b07d4a7797
-  tree_hash: 05ad36c615d431446c85eb53a4517804c8bbe138379a838329e14008fe61b061
+  tree_hash: f24297e10e927c2d4c8ab1be91b7190509c95cc62c5bee3c4128314d3b5bbd5b
   skills:
   - canonical_id: superpowers/brainstorming
     runtime_name: brainstorming
@@ -528,7 +537,7 @@ sources:
 - source_id: ui-ux-pro-max-skill
   type: git
   resolved_commit: 8a1a6d857332da32252d77365da90c3f6293b47b
-  tree_hash: d496dc57b7712e55bfdc726083418c671a3c4267f5ad57118586774dbf9bf3a8
+  tree_hash: ee98e9eecf521e45aeb644532146d636fa26883e02e99f8867b078314d187528
   skills:
   - canonical_id: ui-ux-pro-max-skill/banner-design
     runtime_name: banner-design

@@ -30,6 +30,11 @@ sources:
     location: https://github.com/AminBlg/SimpleEnglish.git
     track: main
     skill_root: skills
+  - id: diagram-design
+    type: git
+    location: https://github.com/cathrynlavery/diagram-design.git
+    track: main
+    skill_root: skills
   - id: humanizer-zh-tw
     type: filesystem
     location: ../src/skill_source/humanizer-zh-tw

@@ -48,6 +48,7 @@ targets:
       - mattpocock/engineering/to-spec
       - mattpocock/engineering/to-tickets
       - simple-english/simple-english
+      - diagram-design/diagram-design
       - humanizer-zh-tw/humanizer-zh-tw
       - software-development/code-change-planning
       - software-development/compose-managed-rca
@@ -101,6 +102,7 @@ targets:
       - mattpocock/engineering/to-spec
       - mattpocock/engineering/to-tickets
       - simple-english/simple-english
+      - diagram-design/diagram-design
       - lileesystems/jira-ticket-writer
       - lileesystems/lilee-candidate-tracking-page
       - lileesystems/lilee-confluence-adf-authoring
