@@ -7,6 +7,22 @@ import zipfile
 from pathlib import Path
 
 
+def _is_pytest_bootstrap(name: str) -> bool:
+    return name in {"conftest.py", "tests/__init__.py"} or name.endswith(
+        ("/conftest.py", "/tests/__init__.py")
+    )
+
+
+def test_pytest_bootstrap_matcher_covers_archive_root_and_prefixed_paths() -> None:
+    assert _is_pytest_bootstrap("conftest.py")
+    assert _is_pytest_bootstrap("tests/conftest.py")
+    assert _is_pytest_bootstrap("tests/__init__.py")
+    assert _is_pytest_bootstrap("skill_delegator-0.1.0/conftest.py")
+    assert _is_pytest_bootstrap("skill_delegator-0.1.0/tests/conftest.py")
+    assert _is_pytest_bootstrap("skill_delegator-0.1.0/tests/__init__.py")
+    assert not _is_pytest_bootstrap("skill_delegator/__init__.py")
+
+
 def test_release_artifact_bytes_match_source_wheel_and_sdist(tmp_path: Path) -> None:
     project = Path(__file__).parents[2]
     dist = tmp_path / "dist"
@@ -52,21 +68,8 @@ def test_release_artifact_bytes_match_source_wheel_and_sdist(tmp_path: Path) -> 
         assert not [
             name for name in sdist_members if any(part in f"/{name}" for part in forbidden_parts)
         ]
-        pytest_bootstrap_suffixes = (
-            "/conftest.py",
-            "/tests/__init__.py",
-            "/tests/conftest.py",
-        )
-        assert not [
-            name
-            for name in wheel_archive.namelist()
-            if any(name.endswith(suffix) for suffix in pytest_bootstrap_suffixes)
-        ]
-        assert not [
-            name
-            for name in sdist_members
-            if any(name.endswith(suffix) for suffix in pytest_bootstrap_suffixes)
-        ]
+        assert not [name for name in wheel_archive.namelist() if _is_pytest_bootstrap(name)]
+        assert not [name for name in sdist_members if _is_pytest_bootstrap(name)]
         for source in bundled:
             relative = source.relative_to(project).as_posix()
             if relative.startswith(("schemas/", "docs/")):
