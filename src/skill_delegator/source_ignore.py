@@ -16,12 +16,20 @@ from pathspec import GitIgnoreSpec
 def _git_compatible_pattern(line: str) -> str:
     """Keep a trailing ``/**`` from matching its own parent directory."""
 
-    pattern = line.lstrip() if line.endswith("\\ ") else line.strip()
+    pattern = line
+    while pattern.endswith(" ") and not pattern.endswith("\\ "):
+        pattern = pattern[:-1]
+    leading_whitespace = len(pattern) - len(pattern.lstrip())
+    if leading_whitespace:
+        pattern = (
+            "".join(f"\\{character}" for character in pattern[:leading_whitespace])
+            + pattern[leading_whitespace:]
+        )
     if pattern.endswith("/**"):
         # pathspec compiles ``abc/**`` as ``^abc/.*$``, which also matches the
         # traversal candidate ``abc/``.  Git excludes only entries below abc.
         return f"{pattern}/*"
-    return line
+    return pattern
 
 
 @dataclass(frozen=True)

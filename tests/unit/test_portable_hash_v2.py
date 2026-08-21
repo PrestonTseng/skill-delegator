@@ -51,6 +51,30 @@ def _record(kind: bytes, mode: int) -> bytes:
     return digest.digest()
 
 
+def _git_status_classification(source: Path) -> dict[str, str]:
+    status = subprocess.run(
+        [
+            "git",
+            "-c",
+            "core.excludesFile=/dev/null",
+            "-C",
+            source,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--ignored",
+            "--untracked-files=all",
+        ],
+        check=True,
+        capture_output=True,
+    ).stdout
+    return {
+        record[3:].decode("utf-8", errors="surrogateescape"): record[:2].decode("ascii")
+        for record in status.split(b"\0")
+        if record
+    }
+
+
 def test_portable_modes_ignore_host_permissions_but_retain_executable_identity() -> None:
     assert _record(b"D", 0o700) == _record(b"D", 0o755)
     assert _record(b"L", 0o755) == _record(b"L", 0o777)
@@ -181,23 +205,7 @@ def test_trailing_recursive_glob_matches_git_across_evidence_layers(tmp_path: Pa
     )
     subprocess.run(["git", "init", "-q", source], check=True)
 
-    status = subprocess.run(
-        [
-            "git",
-            "-c",
-            "core.excludesFile=/dev/null",
-            "-C",
-            source,
-            "status",
-            "--short",
-            "--ignored",
-            "--untracked-files=all",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.splitlines()
-    git_classification = {line[3:]: line[:2] for line in status}
+    git_classification = _git_status_classification(source)
     assert git_classification["abc/def/keep.txt"] == "??"
     assert git_classification["abc/drop.txt"] == "!!"
     assert git_classification["skills/demo/SKILL.md"] == "??"
@@ -231,6 +239,101 @@ def test_trailing_recursive_glob_matches_git_across_evidence_layers(tmp_path: Pa
     (source / "abc/drop.txt").write_text("ignored change", encoding="utf-8")
     assert hash_tree(source) == path_hash
     (source / "abc/def/keep.txt").write_text("included change", encoding="utf-8")
+    assert hash_tree(source) != path_hash
+
+
+def test_whitespace_safe_trailing_glob_matches_git_across_evidence_layers(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    _write_skill(source, "skills/control", "control")
+    spaced_skill = _write_skill(source, " abc/def", "spaced")
+    (spaced_skill / "keep.txt").write_text("spaced keep", encoding="utf-8")
+    (source / " abc" / "drop.txt").write_text("spaced drop", encoding="utf-8")
+    (source / "abc" / "def").mkdir(parents=True)
+    (source / "abc" / "drop.txt").write_text("ordinary drop", encoding="utf-8")
+    (source / "abc" / "def" / "keep.txt").write_text("ordinary keep", encoding="utf-8")
+    (source / "plain" / "def").mkdir(parents=True)
+    (source / "plain" / "drop.txt").write_text("plain drop", encoding="utf-8")
+    (source / "plain" / "def" / "keep.txt").write_text("plain keep", encoding="utf-8")
+    (source / "rooted" / "def").mkdir(parents=True)
+    (source / "rooted" / "drop.txt").write_text("rooted drop", encoding="utf-8")
+    (source / "rooted" / "def" / "keep.txt").write_text("rooted keep", encoding="utf-8")
+    (source / "literal").mkdir()
+    (source / "literal" / "plain").write_text("plain", encoding="utf-8")
+    (source / "literal" / "trailing ").write_text("escaped trailing space", encoding="utf-8")
+    (source / "pruned").mkdir()
+    (source / "pruned" / "keep.txt").write_text("parent remains ignored", encoding="utf-8")
+    (source / ".gitignore").write_text(
+        "# comment\n"
+        "\n"
+        " abc/**\n"
+        "! abc/def/\n"
+        "! abc/def/SKILL.md\n"
+        "! abc/def/keep.txt\n"
+        "plain/**   \n"
+        "!plain/def/\n"
+        "!plain/def/keep.txt\n"
+        "/rooted/**\n"
+        "!/rooted/def/\n"
+        "!/rooted/def/keep.txt\n"
+        "literal/**\\ \n"
+        "pruned/\n"
+        "!pruned/keep.txt\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q", source], check=True)
+
+    git_classification = _git_status_classification(source)
+    expected_included = {
+        " abc/def/SKILL.md",
+        " abc/def/keep.txt",
+        "abc/def/keep.txt",
+        "abc/drop.txt",
+        "literal/plain",
+        "plain/def/keep.txt",
+        "rooted/def/keep.txt",
+    }
+    expected_ignored = {
+        " abc/drop.txt",
+        "literal/trailing ",
+        "plain/drop.txt",
+        "pruned/keep.txt",
+        "rooted/drop.txt",
+    }
+    assert {path: git_classification[path] for path in expected_included} == {
+        path: "??" for path in expected_included
+    }
+    assert {path: git_classification[path] for path in expected_ignored} == {
+        path: "!!" for path in expected_ignored
+    }
+
+    inventory = {path.relative_to(source).as_posix() for path in _inventory_paths(source)}
+    assert expected_included <= inventory
+    assert expected_ignored.isdisjoint(inventory)
+    path_artifacts = discover_skills(source, PurePosixPath(" abc"))
+    assert [artifact.runtime_name for artifact in path_artifacts] == ["spaced"]
+    path_hash = hash_tree(source)
+    root_fd = os.open(source, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        assert discover_skills_at(root_fd, PurePosixPath(" abc")) == path_artifacts
+        assert hash_tree_at(root_fd) == path_hash
+    finally:
+        os.close(root_fd)
+
+    resolved = resolve_sources(_config(source), tmp_path / "cache")[0]
+
+    for relative in expected_included:
+        assert (resolved.root / relative).is_file()
+    for relative in expected_ignored:
+        assert not (resolved.root / relative).exists()
+    validate_snapshot_tree(resolved.root)
+    assert resolved.tree_hash == path_hash == hash_tree(resolved.root)
+    assert resolve_sources(_config(source), tmp_path / "cache")[0] == resolved
+
+    (source / " abc" / "drop.txt").write_text("ignored change", encoding="utf-8")
+    assert hash_tree(source) == path_hash
+    (spaced_skill / "keep.txt").write_text("included change", encoding="utf-8")
     assert hash_tree(source) != path_hash
 
 
