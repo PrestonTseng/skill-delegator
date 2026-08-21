@@ -51,3 +51,13 @@ sources:
     type: filesystem
     location: ../src/skill_source/software-development
     skill_root: .
+  - id: angular
+    type: git
+    location: https://github.com/angular/skills
+    track: main
+    skill_root: .
+  - id: vercel
+    type: git
+    location: https://github.com/vercel-labs/agent-skills
+    track: main
+    skill_root: skills

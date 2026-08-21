@@ -105,3 +105,14 @@ skills:
   - software-development/focused-diff-review
   - software-development/gerrit-code-review
   - software-development/indexed-codebase-inspection
+
+  - angular/angular-developer
+  - angular/angular-new-app
+
+  - vercel/composition-patterns
+  - vercel/react-best-practices
+  - vercel/react-native-skills
+  - vercel/react-view-transitions
+  - vercel/web-design-guidelines
+  - vercel/writing-guidelines
+  

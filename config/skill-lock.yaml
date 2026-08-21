@@ -1,5 +1,18 @@
 schema_version: 1
 sources:
+- source_id: angular
+  type: git
+  resolved_commit: 23336a9d707f5a14c324019b554b605e9b6268a5
+  tree_hash: ab530aa569c928a4d5b2b8e108b2b235be72c1bf44af6853ec89276b14b1e853
+  skills:
+  - canonical_id: angular/angular-developer
+    runtime_name: angular-developer
+    path: angular-developer
+    sha256: 640a36bc305d93f994385cbf493e3df3f94f3eef3ea8918c9a1a8378f72a2b81
+  - canonical_id: angular/angular-new-app
+    runtime_name: angular-new-app
+    path: angular-new-app
+    sha256: 89c7b01f8febd20b8a64690be63cb8ba82b7d0d2c65cb78c47662d7609d45e40
 - source_id: anthropic
   type: git
   resolved_commit: 0a64e398ec6bb34a494f0c347e8ccae53a862f8e
@@ -92,13 +105,13 @@ sources:
     sha256: 8ffb5f0a34797ff88cc8fa1a596420299548b33be49d3e5105a66cf7c0eefdf3
 - source_id: diagram-design
   type: git
-  resolved_commit: e011b04af8297aebe5c310e0febda723cbe6af79
-  tree_hash: f25d6e2b9f68332de5a83691f25f143e4c21c0acaa92c8b5e2ca800f1d82ecaf
+  resolved_commit: 5538b35116bf5392cabe2cd68bdbc3cf3d09cc9a
+  tree_hash: 95077308fe4e357d5d1d19e9281b0303d008ece2c2f88ae1737257af83422fde
   skills:
   - canonical_id: diagram-design/diagram-design
     runtime_name: diagram-design
     path: skills/diagram-design
-    sha256: ef9b69c8e7888a6788f1ba9d405ff108b911798fcda7f3e64859353c49a5eb20
+    sha256: 1f90922011ba452ea0ebab5cab6ac6c9ff6497e79509fa17a0b408ede106b13f
 - source_id: humanizer-zh-tw
   type: filesystem
   tree_hash: db6f0642a6855d3e791119eaa8f56dd411f5edeb50a2dc5c7e89d1059b7092f9
@@ -193,8 +206,8 @@ sources:
     sha256: ba1d1b26a21329ad0bda1a2e250e17eadfd0e93be9388fa3b45aff1431ca9062
 - source_id: mattpocock
   type: git
-  resolved_commit: 885e2ca4d842d139e9aef4e48d366c63cb1b8013
-  tree_hash: 9d8be0a6a4451f42406b2bfed7a4e36cb7d50273ded9f9cce7ef5a78df0d27cd
+  resolved_commit: 0ab1b63a410a03d3627979a109c8695de27af954
+  tree_hash: 41f9e04f95ea57c2f9e292eaf49c99be34588c2a20315299e146c0cf54a6de11
   skills:
   - canonical_id: mattpocock/engineering/ask-matt
     runtime_name: ask-matt
@@ -315,7 +328,7 @@ sources:
   - canonical_id: mattpocock/productivity/grilling
     runtime_name: grilling
     path: skills/productivity/grilling
-    sha256: 8b5d000b90085e690c4e5d4690ca0ab0e8b1c9976aacc4b40daa205df92444a2
+    sha256: 579eb2e553d5c0eef1fa5f06ae90883c18fd21506aa52ad0f98e217a6fd3b15c
   - canonical_id: mattpocock/productivity/handoff
     runtime_name: handoff
     path: skills/productivity/handoff
@@ -438,13 +451,13 @@ sources:
     sha256: 1e605faaac726eadeee018806eb59459fc89e42845a28ef6e6dc6ce6717ed448
 - source_id: simple-english
   type: git
-  resolved_commit: 63f5d57f0c56e24108f63655d40f1a2680bd4e6f
-  tree_hash: dc216e0e97e9fb4223e86791ad0c96328bd1a542e491e6cf2709f9c7d0815d04
+  resolved_commit: be3277cefe78a27d84315b272c34b2135caf9a66
+  tree_hash: 496f78f29626c640c84e697110b10b1b58edbc1e97667f5c8d5033b3b1dd294c
   skills:
   - canonical_id: simple-english/simple-english
     runtime_name: simple-english
     path: skills/simple-english
-    sha256: a2108e48cb0b35f1f856715a172e06cae0c9f928caf9a90fa1e86e8642e09a2a
+    sha256: 1765e6a2d95a4fe49dd50fd50238f2a751c963eb81b68c0ad8289aa8bf4502ab
 - source_id: software-development
   type: filesystem
   tree_hash: 7f3e3a3fe0cb1b9dd6ec6cecf44a9e3a20626a8801a99052cce911b993120804
@@ -476,7 +489,7 @@ sources:
 - source_id: superpowers
   type: git
   resolved_commit: b36e0829c6d0140e93cfef2ca599b1b07d4a7797
-  tree_hash: 05ad36c615d431446c85eb53a4517804c8bbe138379a838329e14008fe61b061
+  tree_hash: f24297e10e927c2d4c8ab1be91b7190509c95cc62c5bee3c4128314d3b5bbd5b
   skills:
   - canonical_id: superpowers/brainstorming
     runtime_name: brainstorming
@@ -536,8 +549,8 @@ sources:
     sha256: 23cc75af09990dbd1cf42691d3eb938acb927a4f1644ca2c2216b9b5be9e5770
 - source_id: ui-ux-pro-max-skill
   type: git
-  resolved_commit: 8a1a6d857332da32252d77365da90c3f6293b47b
-  tree_hash: d496dc57b7712e55bfdc726083418c671a3c4267f5ad57118586774dbf9bf3a8
+  resolved_commit: bc826e2267a36d98a2dcf5231e16c30ff546770f
+  tree_hash: ea21683276946bfe8128263ad9911640294cfd47f3fe5b811151703836258865
   skills:
   - canonical_id: ui-ux-pro-max-skill/banner-design
     runtime_name: banner-design
@@ -567,3 +580,44 @@ sources:
     runtime_name: ui-ux-pro-max
     path: .claude/skills/ui-ux-pro-max
     sha256: 89bd01a06821fb4998458f7fa883a20316b0b2fd92724d99749e9311082774a7
+- source_id: vercel
+  type: git
+  resolved_commit: b8caa260a420a73042e35521de4b5c8baf6446cc
+  tree_hash: bbe5295d1078a86396aff10a07f723b06ec8e6e74d733ee9c153d893b9b243d8
+  skills:
+  - canonical_id: vercel/composition-patterns
+    runtime_name: vercel-composition-patterns
+    path: skills/composition-patterns
+    sha256: 3ea09e48aba22f3938bb915880fb870230d6704986a14a1ac8778e59a9d1654a
+  - canonical_id: vercel/deploy-to-vercel
+    runtime_name: deploy-to-vercel
+    path: skills/deploy-to-vercel
+    sha256: 35c03b19962c904003d055b5f7cbc4fe557d6b4630c4f374a2e7d50a3d14a1c0
+  - canonical_id: vercel/react-best-practices
+    runtime_name: vercel-react-best-practices
+    path: skills/react-best-practices
+    sha256: 6e856dc95129aa948c67cb5be7df407118d7f6dd59d6102f3279c610f7a13aed
+  - canonical_id: vercel/react-native-skills
+    runtime_name: vercel-react-native-skills
+    path: skills/react-native-skills
+    sha256: ed381076cbcaa4a31b2dca0ebee2c5b542ba3b74c1e22966106dc764b96e285a
+  - canonical_id: vercel/react-view-transitions
+    runtime_name: vercel-react-view-transitions
+    path: skills/react-view-transitions
+    sha256: 4decb1794e137683876e7e0991cacb719b362375df80ca056d6c089b4eefdab2
+  - canonical_id: vercel/vercel-cli-with-tokens
+    runtime_name: vercel-cli-with-tokens
+    path: skills/vercel-cli-with-tokens
+    sha256: bde1343d25e7b9ad6b0961955f84164ad8518d4facff5d94fe5699c58fbdc8cc
+  - canonical_id: vercel/vercel-optimize
+    runtime_name: vercel-optimize
+    path: skills/vercel-optimize
+    sha256: 27598cf09818236b86802e38a37f503c0caa4ebc5827d6527ea6a6660a9c24b3
+  - canonical_id: vercel/web-design-guidelines
+    runtime_name: web-design-guidelines
+    path: skills/web-design-guidelines
+    sha256: 2212debf94abb2d516822fec0ac61d18ab9e41beccdfea361a7388960976535f
+  - canonical_id: vercel/writing-guidelines
+    runtime_name: writing-guidelines
+    path: skills/writing-guidelines
+    sha256: 13b6a7b1f6c2ca3693ffc37966d8462214d9af4d9a35fd77aef53dcdfb59fe4c
