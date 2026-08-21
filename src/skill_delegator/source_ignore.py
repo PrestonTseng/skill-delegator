@@ -13,6 +13,17 @@ from pathlib import Path
 from pathspec import GitIgnoreSpec
 
 
+def _git_compatible_pattern(line: str) -> str:
+    """Keep a trailing ``/**`` from matching its own parent directory."""
+
+    pattern = line.lstrip() if line.endswith("\\ ") else line.strip()
+    if pattern.endswith("/**"):
+        # pathspec compiles ``abc/**`` as ``^abc/.*$``, which also matches the
+        # traversal candidate ``abc/``.  Git excludes only entries below abc.
+        return f"{pattern}/*"
+    return line
+
+
 @dataclass(frozen=True)
 class _ScopedSpec:
     base: tuple[bytes, ...]
@@ -27,9 +38,8 @@ class IgnoreRules:
 
     def extend(self, base: tuple[bytes, ...], payload: bytes) -> IgnoreRules:
         text = payload.decode("utf-8", errors="surrogateescape")
-        return IgnoreRules(
-            (*self.scopes, _ScopedSpec(base, GitIgnoreSpec.from_lines(text.splitlines())))
-        )
+        lines = [_git_compatible_pattern(line) for line in text.splitlines()]
+        return IgnoreRules((*self.scopes, _ScopedSpec(base, GitIgnoreSpec.from_lines(lines))))
 
     def _direct_match(self, path: tuple[bytes, ...], *, directory: bool) -> bool | None:
         if path and path[-1] == b".gitignore":

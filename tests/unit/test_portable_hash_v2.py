@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import hashlib
 import os
+import subprocess
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
 import pytest
 import yaml
 
-from skill_delegator.descriptor_tree import hash_tree_at
+from skill_delegator.descriptor_tree import discover_skills_at, hash_tree_at
 from skill_delegator.errors import SourceError
 from skill_delegator.inventory import (
     _hash_record,
+    _inventory_paths,
     discover_skills,
     hash_tree,
     validate_snapshot_tree,
@@ -153,6 +155,83 @@ def test_path_descriptor_and_cache_share_gitignore_inventory(tmp_path: Path) -> 
     assert not (resolved.root / "generated").exists()
     assert (resolved.root / ".gitignore").is_file()
     assert resolved.tree_hash == hash_tree(source) == hash_tree(resolved.root)
+
+
+def test_trailing_recursive_glob_matches_git_across_evidence_layers(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    skill = _write_skill(source, "skills/demo")
+    (skill / "keep.txt").write_text("skill keep", encoding="utf-8")
+    (skill / "drop.txt").write_text("skill drop", encoding="utf-8")
+    (source / "abc" / "def").mkdir(parents=True)
+    (source / "abc" / "drop.txt").write_text("abc drop", encoding="utf-8")
+    (source / "abc" / "def" / "keep.txt").write_text("abc keep", encoding="utf-8")
+    (source / "pruned").mkdir()
+    (source / "pruned" / "keep.txt").write_text("parent remains ignored", encoding="utf-8")
+    (source / ".gitignore").write_text(
+        "abc/**\n"
+        "!abc/def/\n"
+        "!abc/def/keep.txt\n"
+        "skills/**\n"
+        "!skills/demo/\n"
+        "!skills/demo/SKILL.md\n"
+        "!skills/demo/keep.txt\n"
+        "pruned/\n"
+        "!pruned/keep.txt\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q", source], check=True)
+
+    status = subprocess.run(
+        [
+            "git",
+            "-c",
+            "core.excludesFile=/dev/null",
+            "-C",
+            source,
+            "status",
+            "--short",
+            "--ignored",
+            "--untracked-files=all",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    git_classification = {line[3:]: line[:2] for line in status}
+    assert git_classification["abc/def/keep.txt"] == "??"
+    assert git_classification["abc/drop.txt"] == "!!"
+    assert git_classification["skills/demo/SKILL.md"] == "??"
+    assert git_classification["skills/demo/keep.txt"] == "??"
+    assert git_classification["skills/demo/drop.txt"] == "!!"
+    assert git_classification["pruned/keep.txt"] == "!!"
+
+    inventory = {path.relative_to(source).as_posix() for path in _inventory_paths(source)}
+    assert {"abc", "abc/def", "abc/def/keep.txt", "skills/demo/SKILL.md"} <= inventory
+    assert {"abc/drop.txt", "skills/demo/drop.txt", "pruned"}.isdisjoint(inventory)
+    path_artifacts = discover_skills(source, PurePosixPath("skills"))
+    path_hash = hash_tree(source)
+    root_fd = os.open(source, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        assert discover_skills_at(root_fd, PurePosixPath("skills")) == path_artifacts
+        assert hash_tree_at(root_fd) == path_hash
+    finally:
+        os.close(root_fd)
+
+    resolved = resolve_sources(_config(source), tmp_path / "cache")[0]
+
+    assert (resolved.root / "abc/def/keep.txt").read_text(encoding="utf-8") == "abc keep"
+    assert not (resolved.root / "abc/drop.txt").exists()
+    assert (resolved.root / "skills/demo/keep.txt").is_file()
+    assert not (resolved.root / "skills/demo/drop.txt").exists()
+    assert not (resolved.root / "pruned").exists()
+    validate_snapshot_tree(resolved.root)
+    assert resolved.tree_hash == path_hash == hash_tree(resolved.root)
+    assert resolve_sources(_config(source), tmp_path / "cache")[0] == resolved
+
+    (source / "abc/drop.txt").write_text("ignored change", encoding="utf-8")
+    assert hash_tree(source) == path_hash
+    (source / "abc/def/keep.txt").write_text("included change", encoding="utf-8")
+    assert hash_tree(source) != path_hash
 
 
 def test_cache_is_algorithm_namespaced_and_rejects_injected_ignored_entries(
