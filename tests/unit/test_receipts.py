@@ -135,6 +135,7 @@ def test_git_revision_requires_and_records_direct_snapshot_tree_identity() -> No
             "revision_kind": "resolved_commit",
             "revision": commit,
             "tree_identity": _SHA_B,
+            "hash_algorithm": "sha256-portable-v2",
         }
     ]
 

@@ -14,6 +14,7 @@ import yaml
 from skill_delegator.errors import SourceError
 from skill_delegator.identifiers import canonical_relative_path
 from skill_delegator.models import SkillArtifact
+from skill_delegator.source_ignore import IgnoreRules
 
 _RUNTIME_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
@@ -67,20 +68,60 @@ def _validate_relative_root(skill_root: PurePosixPath) -> None:
         raise SourceError(f"skill root must be a confined relative path: {skill_root}")
 
 
-def _assert_confined_symlinks(tree_root: Path, source_root: Path) -> None:
-    for directory, dirnames, filenames in os.walk(tree_root, followlinks=False):
-        dirnames[:] = sorted(name for name in dirnames if name != ".git")
-        names = [*dirnames, *sorted(name for name in filenames if name != ".git")]
-        for name in names:
-            path = Path(directory) / name
-            if not path.is_symlink():
-                continue
+def _inventory_paths(root: Path, *, reject_ignored: bool = False) -> tuple[Path, ...]:
+    paths: list[Path] = []
+
+    def walk(directory: Path, prefix: tuple[bytes, ...], inherited: IgnoreRules) -> None:
+        try:
+            entries = sorted(os.scandir(directory), key=lambda entry: os.fsencode(entry.name))
+        except OSError as error:
+            raise SourceError(f"cannot list source directory {directory}: {error}") from error
+        rules = inherited
+        ignore = next(
+            (entry for entry in entries if os.fsencode(entry.name) == b".gitignore"), None
+        )
+        if ignore is not None:
             try:
-                resolved = path.resolve(strict=True)
+                metadata = ignore.stat(follow_symlinks=False)
+                if stat.S_ISREG(metadata.st_mode):
+                    rules = rules.extend(prefix, Path(ignore.path).read_bytes())
             except OSError as error:
-                raise SourceError(f"broken symlink in source: {path}: {error}") from error
-            if not resolved.is_relative_to(source_root):
-                raise SourceError(f"symlink escape from source root: {path} -> {resolved}")
+                raise SourceError(
+                    f"cannot read source .gitignore {ignore.path}: {error}"
+                ) from error
+        for entry in entries:
+            name = os.fsencode(entry.name)
+            if name == b".git":
+                continue
+            path = Path(entry.path)
+            try:
+                metadata = entry.stat(follow_symlinks=False)
+            except OSError as error:
+                raise SourceError(f"cannot inspect source path {path}: {error}") from error
+            parts = (*prefix, name)
+            directory_entry = stat.S_ISDIR(metadata.st_mode)
+            if rules.ignored(parts, directory=directory_entry):
+                if reject_ignored:
+                    raise SourceError(f"ignored entry present in filtered snapshot: {path}")
+                continue
+            paths.append(path)
+            if directory_entry:
+                walk(path, parts, rules)
+
+    walk(root, (), IgnoreRules())
+    return tuple(paths)
+
+
+def _assert_confined_symlinks(tree_root: Path, source_root: Path) -> None:
+    for path in _inventory_paths(tree_root):
+        if not path.is_symlink():
+            continue
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError as error:
+            raise SourceError(f"broken symlink in source: {path}: {error}") from error
+        if not resolved.is_relative_to(source_root):
+            raise SourceError(f"symlink escape from source root: {path} -> {resolved}")
 
 
 def validate_source_tree(source_root: Path) -> Path:
@@ -95,13 +136,9 @@ def validate_snapshot_tree(source_root: Path) -> Path:
     """Validate links remain confined after a tree is copied to a new root."""
 
     source = validate_source_tree(source_root)
-    for directory, dirnames, filenames in os.walk(source, followlinks=False):
-        dirnames[:] = sorted(name for name in dirnames if name != ".git")
-        names = [*dirnames, *sorted(name for name in filenames if name != ".git")]
-        for name in names:
-            path = Path(directory) / name
-            if path.is_symlink() and Path(os.readlink(path)).is_absolute():
-                raise SourceError(f"symlink escape from copied snapshot root: {path}")
+    for path in _inventory_paths(source, reject_ignored=True):
+        if path.is_symlink() and Path(os.readlink(path)).is_absolute():
+            raise SourceError(f"symlink escape from copied snapshot root: {path}")
     return source
 
 
@@ -174,23 +211,30 @@ def _hash_record(digest: Any, kind: bytes, path: bytes, mode: int, payload: byte
     digest.update(kind)
     digest.update(len(path).to_bytes(8, "big"))
     digest.update(path)
-    digest.update(mode.to_bytes(4, "big"))
+    if kind == b"F":
+        canonical_mode = 0o755 if mode & 0o111 else 0o644
+    elif kind == b"D":
+        canonical_mode = 0o755
+    elif kind == b"L":
+        canonical_mode = 0o777
+    else:
+        raise SourceError(f"unsupported source entry kind: {kind!r}")
+    digest.update(canonical_mode.to_bytes(4, "big"))
     digest.update(len(payload).to_bytes(8, "big"))
     digest.update(payload)
 
 
-def hash_tree(root: Path) -> str:
-    """Hash a tree over sorted paths, modes, symlink targets, and file bytes.
-
-    Directory entries named ``.git`` are the sole exclusion. Symlinks are hashed
-    as links and are never followed.
-    """
+def _hash_tree_with_policy(root: Path, policy_root: Path) -> str:
+    """Hash filtered entries using portable modes without following symlinks."""
 
     root = _validated_root(root)
+    policy_root = _validated_root(policy_root)
+    if not root.is_relative_to(policy_root):
+        raise SourceError(f"hash root is outside source policy root: {root}")
     digest = hashlib.sha256()
     paths: list[tuple[bytes, Path]] = []
-    for path in root.rglob("*"):
-        if ".git" in path.relative_to(root).parts:
+    for path in _inventory_paths(policy_root):
+        if path == root or not path.is_relative_to(root):
             continue
         relative = PurePosixPath(path.relative_to(root).as_posix())
         encoded_relative = _filesystem_bytes(relative.as_posix(), "source path")
@@ -214,6 +258,12 @@ def hash_tree(root: Path) -> str:
     return digest.hexdigest()
 
 
+def hash_tree(root: Path) -> str:
+    """Hash a source tree with portable modes and source-local ``.gitignore`` rules."""
+
+    return _hash_tree_with_policy(root, root)
+
+
 def discover_skills(source_root: Path, skill_root: PurePosixPath) -> tuple[SkillArtifact, ...]:
     """Discover strict ``SKILL.md`` artifacts below a confined skill root."""
 
@@ -232,8 +282,11 @@ def discover_skills(source_root: Path, skill_root: PurePosixPath) -> tuple[Skill
 
     artifacts: list[SkillArtifact] = []
     seen: set[PurePosixPath] = set()
-    for manifest in sorted(resolved_skill_root.rglob("SKILL.md")):
-        if ".git" in manifest.relative_to(resolved_skill_root).parts or not manifest.is_file():
+    for manifest in sorted(
+        (path for path in _inventory_paths(source) if path.name == "SKILL.md"),
+        key=lambda path: os.fsencode(path.relative_to(source)),
+    ):
+        if not manifest.is_relative_to(resolved_skill_root) or not manifest.is_file():
             continue
         directory = manifest.parent
         relative = PurePosixPath(directory.relative_to(resolved_skill_root).as_posix())
@@ -256,7 +309,7 @@ def discover_skills(source_root: Path, skill_root: PurePosixPath) -> tuple[Skill
                 relative_path=relative,
                 runtime_name=name,
                 description=description,
-                sha256=hash_tree(directory),
+                sha256=_hash_tree_with_policy(directory, source),
             )
         )
     return tuple(sorted(artifacts, key=lambda artifact: artifact.relative_path.as_posix()))

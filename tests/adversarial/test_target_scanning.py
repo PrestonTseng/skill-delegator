@@ -49,7 +49,16 @@ def _project(tmp_path: Path, name: str) -> tuple[Path, Path, Path]:
     )
     lock = yaml.safe_load((config / "skill-lock.yaml").read_text(encoding="utf-8"))
     revision = lock["sources"][0]["tree_hash"]
-    source = project / "var" / "cache" / "sources" / "example" / revision / "hello"
+    source = (
+        project
+        / "var"
+        / "cache"
+        / "sources"
+        / "example"
+        / lock["hash_algorithm"]
+        / revision
+        / "hello"
+    )
     source.mkdir(parents=True)
     (source / "SKILL.md").write_text("fixture", encoding="utf-8")
     return config, target, source
@@ -63,7 +72,7 @@ def _metadata(target: Path, source: Path) -> None:
             {
                 "schema_version": 1,
                 "manager": "skill-delegator",
-                "cache_root": str(source.parents[2]),
+                "cache_root": str(source.parents[3]),
                 "entries": [
                     {
                         "artifact_id": "example/hello",

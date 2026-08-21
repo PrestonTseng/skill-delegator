@@ -5,7 +5,8 @@
   "additionalProperties": false,
   "required": ["schema_version", "sources"],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"enum": [1, 2]},
+    "hash_algorithm": {"const": "sha256-portable-v2"},
     "sources": {
       "type": "array",
       "items": {
@@ -58,5 +59,15 @@
         ]
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": 1}}},
+      "then": {"not": {"required": ["hash_algorithm"]}}
+    },
+    {
+      "if": {"properties": {"schema_version": {"const": 2}}},
+      "then": {"required": ["hash_algorithm"]}
+    }
+  ]
 }

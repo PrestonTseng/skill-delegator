@@ -98,6 +98,7 @@ def test_copied_main_example_full_cli_flow_converges_and_is_idempotent(tmp_path:
             / "cache"
             / "sources"
             / "example"
+            / "sha256-portable-v2"
             / "c61f839e88b0e993f7b89f17de0536eaa90fa22c6646c00086b40c6abbcdb78f"
             / "hello"
         )

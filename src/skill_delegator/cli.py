@@ -19,6 +19,7 @@ from skill_delegator.identifiers import is_source_id
 from skill_delegator.lockfile import build_lock, write_lock_atomic
 from skill_delegator.managed_state import TargetStateError, scan_target
 from skill_delegator.models import (
+    LEGACY_HASH_ALGORITHM,
     AuthorityConfig,
     CurrentState,
     DesiredSource,
@@ -121,6 +122,7 @@ def _load_validated_lock(config: AuthorityConfig) -> SkillLock:
     document = yaml.safe_load(config.input_snapshot.bytes_for("skill-lock.yaml"))
     return SkillLock(
         schema_version=document["schema_version"],
+        hash_algorithm=document.get("hash_algorithm", LEGACY_HASH_ALGORITHM),
         sources=tuple(
             LockedSource(
                 source_id=source["source_id"],
@@ -177,7 +179,9 @@ def _bind_expected_sources(state: DesiredState, lock: SkillLock, cache_root: Pat
         revisions[source.source_id] = revision
         desired_sources.append(
             DesiredSource(
-                source.source_id, cache_root / source.source_id / revision, source.tree_hash
+                source.source_id,
+                cache_root / source.source_id / lock.hash_algorithm / revision,
+                source.tree_hash,
             )
         )
     targets: list[DesiredTarget] = []
@@ -188,7 +192,7 @@ def _bind_expected_sources(state: DesiredState, lock: SkillLock, cache_root: Pat
             revision = revisions[source_id]
             if revision is None:
                 raise ResolutionError(f"locked source {source_id} has no immutable revision")
-            expected = cache_root / source_id / revision / link.source_path
+            expected = cache_root / source_id / lock.hash_algorithm / revision / link.source_path
             links.append(replace(link, expected_source_path=expected))
         targets.append(replace(target, links=tuple(links)))
     return DesiredState(tuple(targets), tuple(desired_sources))

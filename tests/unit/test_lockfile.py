@@ -83,7 +83,7 @@ def test_resolves_exact_git_commit_into_content_addressed_cache(tmp_path: Path) 
 
     assert resolved[0].revision == first
     assert resolved[0].revision != second
-    assert resolved[0].root == tmp_path / "cache" / "upstream" / first
+    assert resolved[0].root == (tmp_path / "cache" / "upstream" / "sha256-portable-v2" / first)
     assert resolved[0].root.is_dir()
     assert resolved[0].skills[0].canonical_id == "upstream/one"
     locked = build_lock(config_for(source), resolved)
@@ -111,7 +111,7 @@ def test_filesystem_source_swap_uses_retained_inode_and_never_caches_outside_byt
     real_validate = source_store.validate_tree_at
     fired = False
 
-    def swap_after_open(root_fd: int, *, snapshot: bool) -> None:
+    def swap_after_open(root_fd: int, *, snapshot: bool, reject_ignored: bool = False) -> None:
         nonlocal fired
         if not fired:
             fired = True
@@ -121,7 +121,7 @@ def test_filesystem_source_swap_uses_retained_inode_and_never_caches_outside_byt
             else:
                 parent.rename(tmp_path / "parent-original")
                 parent.symlink_to(outside.parent, target_is_directory=True)
-        real_validate(root_fd, snapshot=snapshot)
+        real_validate(root_fd, snapshot=snapshot, reject_ignored=reject_ignored)
 
     monkeypatch.setattr(source_store, "validate_tree_at", swap_after_open)
 
@@ -172,7 +172,7 @@ def test_cache_path_swap_never_writes_outside_retained_inode_and_cleans_staging(
 
     assert fired
     assert tuple(external_cache.iterdir()) == ()
-    assert tuple(retained_cache.iterdir()) == ()
+    assert tuple((retained_cache / "sha256-portable-v2").iterdir()) == ()
 
 
 def test_existing_cache_entry_replacement_during_hash_is_rejected(
@@ -249,7 +249,7 @@ def test_rejects_cache_key_symlink_even_when_external_tree_hash_matches(tmp_path
     revision = hash_tree(source_root)
     external = tmp_path / "external"
     shutil.copytree(source_root, external, symlinks=True)
-    destination = tmp_path / "cache" / "local" / revision
+    destination = tmp_path / "cache" / "local" / "sha256-portable-v2" / revision
     destination.parent.mkdir(parents=True)
     destination.symlink_to(external, target_is_directory=True)
     source = SourceSpec("local", "filesystem", source_root, PurePosixPath("skills"), None)
@@ -444,7 +444,9 @@ def test_cache_race_accepts_concurrent_matching_real_directory(
     ) -> None:
         assert src_dir_fd is not None
         assert src_dir_fd == dst_dir_fd
-        cache_destination = tmp_path / "cache" / "local" / os.fsdecode(destination)
+        cache_destination = (
+            tmp_path / "cache" / "local" / "sha256-portable-v2" / os.fsdecode(destination)
+        )
         shutil.copytree(source_root, cache_destination, symlinks=True)
         raise OSError(race_errno, "competing directory")
 
@@ -453,7 +455,7 @@ def test_cache_race_accepts_concurrent_matching_real_directory(
     resolved = resolve_sources(config_for(source), tmp_path / "cache")
 
     assert hash_tree(resolved[0].root) == resolved[0].revision
-    assert not tuple((tmp_path / "cache" / "local").glob(".snapshot-*"))
+    assert not tuple((tmp_path / "cache" / "local" / "sha256-portable-v2").glob(".snapshot-*"))
 
 
 def test_cache_race_wraps_concurrent_corrupt_directory_and_cleans_staging(
@@ -472,7 +474,9 @@ def test_cache_race_wraps_concurrent_corrupt_directory_and_cleans_staging(
     ) -> None:
         assert src_dir_fd is not None
         assert src_dir_fd == dst_dir_fd
-        cache_destination = tmp_path / "cache" / "local" / os.fsdecode(destination)
+        cache_destination = (
+            tmp_path / "cache" / "local" / "sha256-portable-v2" / os.fsdecode(destination)
+        )
         cache_destination.mkdir()
         (cache_destination / "corrupt").write_text("wrong", encoding="utf-8")
         raise OSError(errno.ENOTEMPTY, "competing directory")
@@ -482,7 +486,7 @@ def test_cache_race_wraps_concurrent_corrupt_directory_and_cleans_staging(
     with pytest.raises(SourceError, match="cache race produced corrupt entry"):
         resolve_sources(config_for(source), tmp_path / "cache")
 
-    assert not tuple((tmp_path / "cache" / "local").glob(".snapshot-*"))
+    assert not tuple((tmp_path / "cache" / "local" / "sha256-portable-v2").glob(".snapshot-*"))
 
 
 def test_build_lock_requires_every_pool_reference(tmp_path: Path) -> None:

@@ -49,7 +49,9 @@ def test_filesystem_lock_never_requires_descriptor_pseudo_path(
 
     resolved = resolve_sources(_config(source), tmp_path / "cache")
 
-    assert resolved[0].root == tmp_path / "cache" / "local" / resolved[0].revision
+    assert resolved[0].root == (
+        tmp_path / "cache" / "local" / "sha256-portable-v2" / resolved[0].revision
+    )
     assert resolved[0].skills[0].canonical_id == "local/hello"
 
 
