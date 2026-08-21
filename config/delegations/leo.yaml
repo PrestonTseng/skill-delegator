@@ -67,6 +67,7 @@ target:
   - lileesystems/tapas/lilee-candidate-review
   - lileesystems/thalos-movement-rca
   - lileesystems/thalos-nibble-authority-development
+  - lileesystems/release-evidence-and-qa-reporting
   - railroad-rules/railroad-blue-signal
   - railroad-rules/railroad-cfr-218
   - railroad-rules/railroad-cfr-220

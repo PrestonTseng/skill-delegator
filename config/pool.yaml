@@ -74,6 +74,7 @@ skills:
   - lileesystems/tapas/lilee-candidate-review
   - lileesystems/thalos-movement-rca
   - lileesystems/thalos-nibble-authority-development
+  - lileesystems/release-evidence-and-qa-reporting
 
   - railroad-rules/railroad-blue-signal
   - railroad-rules/railroad-cfr-218
@@ -115,4 +116,3 @@ skills:
   - vercel/react-view-transitions
   - vercel/web-design-guidelines
   - vercel/writing-guidelines
-  
