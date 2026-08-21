@@ -51,13 +51,14 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["source_id", "type", "revision_kind", "revision", "tree_identity"],
+        "required": ["source_id", "type", "revision_kind", "revision", "tree_identity", "hash_algorithm"],
         "properties": {
           "source_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 128},
           "type": {"enum": ["git", "filesystem"]},
           "revision_kind": {"enum": ["resolved_commit", "tree_hash"]},
           "revision": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
-          "tree_identity": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+          "tree_identity": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+          "hash_algorithm": {"const": "sha256-portable-v2"}
         },
         "oneOf": [
           {

@@ -9,6 +9,7 @@ from pathlib import Path, PurePosixPath
 
 from skill_delegator.identifiers import canonical_relative_path, is_canonical_id, is_source_id
 from skill_delegator.models import (
+    PORTABLE_HASH_ALGORITHM,
     AuthorityConfig,
     DesiredLink,
     DesiredState,
@@ -91,6 +92,8 @@ def _validate_locked_path(
 
 
 def _locked_skills(config: AuthorityConfig, lock: SkillLock) -> dict[str, LockedSkill]:
+    if lock.schema_version != 2 or lock.hash_algorithm != PORTABLE_HASH_ALGORITHM:
+        raise ResolutionError("legacy hash algorithm is not deployable; run skillctl lock")
     configured = {source.id: source for source in config.sources}
     if len(configured) != len(config.sources):
         raise ResolutionError("duplicate configured source id")

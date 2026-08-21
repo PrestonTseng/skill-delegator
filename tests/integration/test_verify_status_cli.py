@@ -277,7 +277,7 @@ def test_offline_git_ungranted_cache_tamper_never_publishes_receipt(tmp_path: Pa
     capsys.readouterr()
     lock = yaml.safe_load((config / "skill-lock.yaml").read_text(encoding="utf-8"))
     locked_source = lock["sources"][0]
-    snapshot = project / "var" / "cache" / "sources" / "upstream" / commit
+    snapshot = project / "var" / "cache" / "sources" / "upstream" / lock["hash_algorithm"] / commit
     tamper = snapshot / "ungranted.txt"
     tamper.write_text("not granted to any target\n", encoding="utf-8")
 
@@ -310,6 +310,7 @@ def test_offline_git_ungranted_cache_tamper_never_publishes_receipt(tmp_path: Pa
             "revision_kind": "resolved_commit",
             "revision": commit,
             "tree_identity": locked_source["tree_hash"],
+            "hash_algorithm": "sha256-portable-v2",
         }
     ]
 

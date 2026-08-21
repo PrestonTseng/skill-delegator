@@ -50,13 +50,23 @@ The canonical artifact ID sets the link path:
 
 `apply` uses only exact lock identities and skill hashes.
 
-A Git lock records the resolved commit and a SHA-256 hash of the complete source snapshot.
+A Git lock records the resolved commit and a SHA-256 hash of the source-oriented snapshot.
 
-A filesystem lock records the same complete snapshot hash as its revision.
+A filesystem lock records the same snapshot hash as its revision. Portable Hash V2 uses fixed
+semantic modes for directories and symlinks and records only executable versus non-executable for
+regular files. Paths, entry kinds, file bytes, and symlink target bytes remain identity-bearing.
+
+Only source-local `.gitignore` files exclude generated or dependency content. Nested rules,
+negation, rooted patterns, and directory patterns use Git-compatible semantics; `.gitignore`
+files themselves remain identity-bearing. The engine never reads global excludes,
+`.git/info/exclude`, or ambient Git configuration. Nonignored untracked files remain part of the
+snapshot identity.
 
 Mutable Git `track` values are update inputs. `apply` never uses them as exact identities.
 
-Source snapshots use content-addressed cache paths below `var/cache/sources/`.
+Source snapshots use content-addressed cache paths below
+`var/cache/sources/<source-id>/<hash-algorithm>/<revision>/`, so legacy and portable identities
+cannot collide on disk.
 
 ## Target Model
 
@@ -92,7 +102,8 @@ Use reviewed Git history to restore an older lock. Then run `plan`, `apply`, and
 
 ## Verification Receipts
 
-Verification hashes each complete cached source snapshot once. Ungranted source changes also invalidate the evidence.
+Verification hashes each complete filtered cached source snapshot once. Ungranted, nonignored
+source changes also invalidate the evidence.
 
 A receipt uses canonical JSON with a final newline. Its filename is the SHA-256 hash of those exact bytes.
 
