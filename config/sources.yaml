@@ -61,3 +61,8 @@ sources:
     location: https://github.com/vercel-labs/agent-skills
     track: main
     skill_root: skills
+  - id: eli5
+    type: git
+    location: https://github.com/dreambigou/eli5
+    track: main
+    skill_root: skills

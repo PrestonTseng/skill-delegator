@@ -2,8 +2,8 @@ schema_version: 1
 sources:
 - source_id: angular
   type: git
-  resolved_commit: 23336a9d707f5a14c324019b554b605e9b6268a5
-  tree_hash: ab530aa569c928a4d5b2b8e108b2b235be72c1bf44af6853ec89276b14b1e853
+  resolved_commit: 5900890c6fd9c1fbd504ef46cd445e8541ec5e72
+  tree_hash: cd67e40c498ec0b38dd2a8fb327f6400265999b1bd3438c99a3b474cd713b7d9
   skills:
   - canonical_id: angular/angular-developer
     runtime_name: angular-developer
@@ -15,8 +15,8 @@ sources:
     sha256: 89c7b01f8febd20b8a64690be63cb8ba82b7d0d2c65cb78c47662d7609d45e40
 - source_id: anthropic
   type: git
-  resolved_commit: 0a64e398ec6bb34a494f0c347e8ccae53a862f8e
-  tree_hash: 8feced0b0c9209b4ef236ee931a74093e5dd38fb4c182cdca5e6c4f8e41be0a8
+  resolved_commit: 3b3fad96af16a10759d930941b4520ba0c40edae
+  tree_hash: 959b34ee62a953384353b998cc000c67dea903ecbf869bada0544196e8699346
   skills:
   - canonical_id: anthropic/academy-guide
     runtime_name: academy-guide
@@ -37,7 +37,7 @@ sources:
   - canonical_id: anthropic/claude-api
     runtime_name: claude-api
     path: skills/claude-api
-    sha256: 2397098782bbcca54c12e85bafc1c556f1ca1d5f0808e75b738820d84302e763
+    sha256: fe420dcf2faeee43cf738fff636f3921cda53422899be4a0196f41f309fb9de0
   - canonical_id: anthropic/discernment-nudge
     runtime_name: discernment-nudge
     path: skills/discernment-nudge
@@ -105,13 +105,22 @@ sources:
     sha256: 8ffb5f0a34797ff88cc8fa1a596420299548b33be49d3e5105a66cf7c0eefdf3
 - source_id: diagram-design
   type: git
-  resolved_commit: 5538b35116bf5392cabe2cd68bdbc3cf3d09cc9a
-  tree_hash: 95077308fe4e357d5d1d19e9281b0303d008ece2c2f88ae1737257af83422fde
+  resolved_commit: 648c2a597839301e06df1e7434a08bde9f42eed3
+  tree_hash: 0ba57537edde1bb56c1a2782cc03d3aa3cdd4e2b33ca751ad6779763efa70eb4
   skills:
   - canonical_id: diagram-design/diagram-design
     runtime_name: diagram-design
     path: skills/diagram-design
-    sha256: 1f90922011ba452ea0ebab5cab6ac6c9ff6497e79509fa17a0b408ede106b13f
+    sha256: 482a42a2ae641ad95e3d8f9e25fba0463beff9718580c134f7bad514112618f5
+- source_id: eli5
+  type: git
+  resolved_commit: a766623b062331fdde53467001379b4ddf3acc2f
+  tree_hash: 273e56cf761ebc0e581fa446506d2bb34702b377f7c6cfcf79cca9c2e6d0c074
+  skills:
+  - canonical_id: eli5/eli5
+    runtime_name: eli5
+    path: skills/eli5
+    sha256: 7927a8019d83a96d1b129502e6389110c066fb9cbe0d3c0d7b42996643a352c3
 - source_id: humanizer-zh-tw
   type: filesystem
   tree_hash: db6f0642a6855d3e791119eaa8f56dd411f5edeb50a2dc5c7e89d1059b7092f9
@@ -206,8 +215,8 @@ sources:
     sha256: ba1d1b26a21329ad0bda1a2e250e17eadfd0e93be9388fa3b45aff1431ca9062
 - source_id: mattpocock
   type: git
-  resolved_commit: 0ab1b63a410a03d3627979a109c8695de27af954
-  tree_hash: b51a4836f3885a5d020fa97cc120c65063e4565e61039fad59a01c6989cc9279
+  resolved_commit: 5b15a47f2d7150f545fbcacbfe381787fc0230dc
+  tree_hash: 0d9bbf425d6459088a56e11f4e28938f1c641cf2602c494dc001f792a1f465ca
   skills:
   - canonical_id: mattpocock/engineering/ask-matt
     runtime_name: ask-matt
@@ -285,6 +294,10 @@ sources:
     runtime_name: claude-handoff
     path: skills/in-progress/claude-handoff
     sha256: c84dadb6d28dd04808fd30c05e8991dbe3fe0355e349349859012a6e8698bf33
+  - canonical_id: mattpocock/in-progress/implement-spec
+    runtime_name: implement-spec
+    path: skills/in-progress/implement-spec
+    sha256: a351fa2bc4d46691be6e20f25483dd9b0d784efff5579125b70a47a6c073990e
   - canonical_id: mattpocock/in-progress/loop-me
     runtime_name: loop-me
     path: skills/in-progress/loop-me
@@ -451,13 +464,13 @@ sources:
     sha256: 1e605faaac726eadeee018806eb59459fc89e42845a28ef6e6dc6ce6717ed448
 - source_id: simple-english
   type: git
-  resolved_commit: be3277cefe78a27d84315b272c34b2135caf9a66
-  tree_hash: 496f78f29626c640c84e697110b10b1b58edbc1e97667f5c8d5033b3b1dd294c
+  resolved_commit: 8e8a008a13e4b478f9ccc20ca16e79aef66c0739
+  tree_hash: cffa5573a2f618561edc311970ac09fc2ecf5e078dedf7628781228d1a210b28
   skills:
   - canonical_id: simple-english/simple-english
     runtime_name: simple-english
     path: skills/simple-english
-    sha256: 1765e6a2d95a4fe49dd50fd50238f2a751c963eb81b68c0ad8289aa8bf4502ab
+    sha256: 9196b4383b69010a9044131248b6f74b87fc5366925156f8c3f0f917893d2907
 - source_id: software-development
   type: filesystem
   tree_hash: 7f3e3a3fe0cb1b9dd6ec6cecf44a9e3a20626a8801a99052cce911b993120804
@@ -582,8 +595,8 @@ sources:
     sha256: 89bd01a06821fb4998458f7fa883a20316b0b2fd92724d99749e9311082774a7
 - source_id: vercel
   type: git
-  resolved_commit: b8caa260a420a73042e35521de4b5c8baf6446cc
-  tree_hash: e02c91a9a53698b13377f781eca85c74ab51a935e24dd6a56481c94354a50cea
+  resolved_commit: dd089a8c752c966dee8bf0f27cb625ba193ffd9e
+  tree_hash: 1648d0646ef0ab6ea4a7d84cb1ccee32607fa956fae9e7da8ab1046e27e274e3
   skills:
   - canonical_id: vercel/composition-patterns
     runtime_name: vercel-composition-patterns
