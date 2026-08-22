@@ -122,7 +122,7 @@ sources:
     sha256: a450d2748b03b806ee99887dd128b403dd6dc173d00755a8b7ab3bd22b08b51a
 - source_id: lileesystems
   type: filesystem
-  tree_hash: 5b1576830b044425783116c0220091ca2e339b373a029dca876ca3e800ace52e
+  tree_hash: f592db703788fe41d4976dc785beff699182757186a4a2eb6966b93191da32af
   skills:
   - canonical_id: lileesystems/jira-ticket-writer
     runtime_name: jira-ticket-writer
@@ -131,15 +131,15 @@ sources:
   - canonical_id: lileesystems/lilee-candidate-tracking-page
     runtime_name: lilee-candidate-tracking-page
     path: lilee-candidate-tracking-page
-    sha256: b021df2d6e3a82f122911aad05d3a923c149ee68363a991f8fec1c4b90fe8f35
+    sha256: 153924b7b50ed9ce06bea928e66b34d962733d2dbb8973f8b395be5f97b45fcf
   - canonical_id: lileesystems/lilee-confluence-adf-authoring
     runtime_name: lilee-confluence-adf-authoring
     path: lilee-confluence-adf-authoring
-    sha256: 8268c102a7da02e5c03a3cc8d1ad77291b93cc605eba73747da82e0d432aac20
+    sha256: cf2a436cef74895d99241e186e7bde53c7bd6d74071c99f683a827e815b572da
   - canonical_id: lileesystems/lilee-delivery-map-authoring
     runtime_name: lilee-delivery-map-authoring
     path: lilee-delivery-map-authoring
-    sha256: 73c1d75807afa6e150118d9b4f291a6ecdfe8302d9791217fd378677757881a4
+    sha256: 5615fbce2c87214ffadc98836005047339471c57f97d94354ba34f65ba7fd74c
   - canonical_id: lileesystems/lilee-kpi-roadmap-maintenance
     runtime_name: lilee-kpi-roadmap-maintenance
     path: lilee-kpi-roadmap-maintenance
@@ -147,7 +147,7 @@ sources:
   - canonical_id: lileesystems/lilee-kpi-spreadsheet-review
     runtime_name: lilee-kpi-spreadsheet-review
     path: lilee-kpi-spreadsheet-review
-    sha256: b6243bf7c5693294e32e44177f960c90efabdd32a67e3b46bb8ee86874d40b2d
+    sha256: 7a1235b6688599f81e495e361905021d946c585e1a30906a161f67a0ba72b81a
   - canonical_id: lileesystems/lilee-presentation-template
     runtime_name: lilee-presentation-template
     path: lilee-presentation-template
@@ -207,7 +207,7 @@ sources:
 - source_id: mattpocock
   type: git
   resolved_commit: 0ab1b63a410a03d3627979a109c8695de27af954
-  tree_hash: 41f9e04f95ea57c2f9e292eaf49c99be34588c2a20315299e146c0cf54a6de11
+  tree_hash: b51a4836f3885a5d020fa97cc120c65063e4565e61039fad59a01c6989cc9279
   skills:
   - canonical_id: mattpocock/engineering/ask-matt
     runtime_name: ask-matt
@@ -489,7 +489,7 @@ sources:
 - source_id: superpowers
   type: git
   resolved_commit: b36e0829c6d0140e93cfef2ca599b1b07d4a7797
-  tree_hash: f24297e10e927c2d4c8ab1be91b7190509c95cc62c5bee3c4128314d3b5bbd5b
+  tree_hash: 05ad36c615d431446c85eb53a4517804c8bbe138379a838329e14008fe61b061
   skills:
   - canonical_id: superpowers/brainstorming
     runtime_name: brainstorming
@@ -550,7 +550,7 @@ sources:
 - source_id: ui-ux-pro-max-skill
   type: git
   resolved_commit: bc826e2267a36d98a2dcf5231e16c30ff546770f
-  tree_hash: ea21683276946bfe8128263ad9911640294cfd47f3fe5b811151703836258865
+  tree_hash: 3dbacab571d3fbeedf2091185282a6cf30def7cfeec5fe8e413c967e2b5e2ed8
   skills:
   - canonical_id: ui-ux-pro-max-skill/banner-design
     runtime_name: banner-design
@@ -583,7 +583,7 @@ sources:
 - source_id: vercel
   type: git
   resolved_commit: b8caa260a420a73042e35521de4b5c8baf6446cc
-  tree_hash: bbe5295d1078a86396aff10a07f723b06ec8e6e74d733ee9c153d893b9b243d8
+  tree_hash: e02c91a9a53698b13377f781eca85c74ab51a935e24dd6a56481c94354a50cea
   skills:
   - canonical_id: vercel/composition-patterns
     runtime_name: vercel-composition-patterns
