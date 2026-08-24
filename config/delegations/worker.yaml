@@ -1,0 +1,17 @@
+schema_version: 1
+target:
+  id: worker
+  root: /opt/data/profiles/worker/skills
+  grants:
+  - superpowers/executing-plans
+  - superpowers/receiving-code-review
+  - superpowers/verification-before-completion
+  - software-development/indexed-codebase-inspection
+  - anthropic/canvas-design
+  - anthropic/webapp-testing
+  - diagram-design/diagram-design
+  - ui-ux-pro-max-skill/ui-styling
+  - ui-ux-pro-max-skill/ui-ux-pro-max
+  - ui-ux-pro-max-skill/slides
+  - simple-english/simple-english
+  - humanizer-zh-tw/humanizer-zh-tw

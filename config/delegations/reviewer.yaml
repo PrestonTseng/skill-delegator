@@ -1,0 +1,10 @@
+schema_version: 1
+target:
+  id: reviewer
+  root: /opt/data/profiles/reviewer/skills
+  grants:
+  - superpowers/verification-before-completion
+  - software-development/focused-diff-review
+  - anthropic/webapp-testing
+  - ui-ux-pro-max-skill/ui-ux-pro-max
+  - diagram-design/diagram-design
