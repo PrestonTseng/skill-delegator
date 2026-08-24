@@ -1,4 +1,5 @@
-schema_version: 1
+schema_version: 2
+hash_algorithm: sha256-portable-v2
 sources:
 - source_id: example
   type: filesystem

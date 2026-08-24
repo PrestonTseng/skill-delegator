@@ -79,6 +79,8 @@ def _validate_semantics(result: VerificationResult) -> None:
         )
         if not (is_git or is_filesystem):
             raise ReceiptError("verification result has incoherent locked_sources identity")
+        if item.hash_algorithm != "sha256-portable-v2":
+            raise ReceiptError("verification result has unsupported hash algorithm")
     evidence_ids = [item.source_id for item in result.source_tree_evidence]
     evidence = {item.source_id: item.sha256 for item in result.source_tree_evidence}
     locked_trees = {item.source_id: item.tree_identity for item in result.locked_sources}
@@ -136,6 +138,7 @@ def receipt_document(result: VerificationResult) -> dict[str, Any]:
                 "revision_kind": item.revision_kind,
                 "revision": item.revision,
                 "tree_identity": item.tree_identity,
+                "hash_algorithm": item.hash_algorithm,
             }
             for item in sorted(result.locked_sources, key=lambda item: item.source_id)
         ],

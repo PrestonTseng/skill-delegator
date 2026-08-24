@@ -67,7 +67,7 @@ def test_resolves_valid_subset_with_exact_desired_link_fields(tmp_path: Path) ->
         targets=(target,),
     )
     lock = SkillLock(
-        1,
+        2,
         (source("alpha", skill("alpha/nested/tool", "tool", "nested/tool")),),
     )
 
@@ -84,10 +84,10 @@ def test_resolves_valid_subset_with_exact_desired_link_fields(tmp_path: Path) ->
 
 def test_empty_targets_and_empty_target_grants_are_valid(tmp_path: Path) -> None:
     empty_authority = config(tmp_path, pool=(), targets=())
-    assert resolve_desired_state(empty_authority, SkillLock(1, ())).targets == ()
+    assert resolve_desired_state(empty_authority, SkillLock(2, ())).targets == ()
 
     target = TargetSpec("empty", tmp_path / "empty", ())
-    state = resolve_desired_state(config(tmp_path, pool=(), targets=(target,)), SkillLock(1, ()))
+    state = resolve_desired_state(config(tmp_path, pool=(), targets=(target,)), SkillLock(2, ()))
     assert state.targets[0].links == ()
 
 
@@ -96,7 +96,7 @@ def test_output_order_is_independent_of_input_order(tmp_path: Path) -> None:
     a = TargetSpec("a-target", tmp_path / "a", ("beta/z",))
     authority = config(tmp_path, pool=("beta/z", "alpha/a"), targets=(z, a))
     lock = SkillLock(
-        1,
+        2,
         (
             source("beta", skill("beta/z", "z", "z", _SHA_B)),
             source("alpha", skill("alpha/a", "a", "a", _SHA_A)),
@@ -132,7 +132,7 @@ def test_rejects_configured_and_locked_source_set_mismatch_deterministically(
         (),
         (),
     )
-    lock = SkillLock(1, (source("gamma"), source("alpha")))
+    lock = SkillLock(2, (source("gamma"), source("alpha")))
 
     with pytest.raises(
         ResolutionError,
@@ -144,7 +144,7 @@ def test_rejects_configured_and_locked_source_set_mismatch_deterministically(
 def test_rejects_locked_source_type_mismatch(tmp_path: Path) -> None:
     authority = config(tmp_path, pool=("alpha/tool",), targets=())
     lock = SkillLock(
-        1,
+        2,
         (
             LockedSource(
                 "alpha",
@@ -187,7 +187,7 @@ def test_rejects_artifact_authority_and_path_binding_mismatches(
         (),
         (),
     )
-    lock = SkillLock(1, (source("alpha", skill(artifact_id, "tool", path)),))
+    lock = SkillLock(2, (source("alpha", skill(artifact_id, "tool", path)),))
 
     with pytest.raises(ResolutionError, match=message):
         resolve_desired_state(authority, lock)
@@ -208,7 +208,7 @@ def test_hidden_skill_root_resolver_rejects_every_non_exact_lock_binding(
     tmp_path: Path, path: str
 ) -> None:
     lock = SkillLock(
-        1,
+        2,
         (source("source", skill("source/banner-design", "banner-design", path)),),
     )
 

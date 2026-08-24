@@ -53,8 +53,8 @@ def _revision(source: LockedSource) -> str:
 
 
 def _validated_old(config: AuthorityConfig, lock: SkillLock) -> dict[str, LockedSource]:
-    if lock.schema_version != 1:
-        raise SourceError("invalid locked schema version")
+    if lock.schema_version != 2:
+        raise SourceError("legacy hash algorithm cannot be updated; run skillctl lock")
     try:
         resolve_desired_state(config, lock)
     except ResolutionError as error:
@@ -191,7 +191,7 @@ def _prepare_update(
     old_by_id = _validated_old(config, old_lock)
     old_source = old_by_id[source_id]
     selected_config = replace(config, sources=(specs[source_id],), pool=(), targets=())
-    check = check_updates(selected_config, SkillLock(1, (old_source,)))[0]
+    check = check_updates(selected_config, SkillLock(2, (old_source,), old_lock.hash_algorithm))[0]
     if check.new_revision is None:
         raise SourceError(f"source {source_id} is unavailable")
     exact_spec = (
@@ -204,10 +204,11 @@ def _prepare_update(
     if new_revision != check.new_revision:
         raise SourceError(f"source {source_id} changed while candidate was prepared")
     candidate = SkillLock(
-        1,
+        2,
         tuple(
             new_source if source.source_id == source_id else source for source in old_lock.sources
         ),
+        old_lock.hash_algorithm,
     )
     _require_complete_pool(config, candidate, label="candidate lock")
     try:

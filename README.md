@@ -91,7 +91,10 @@ format is one `delegations.yaml`; the per-target format is a `delegations/` dire
 | `delegations.yaml` **or** `delegations/<target-id>.yaml` files | Declares target roots and grants from the pool. | The authority owner |
 | `skill-lock.yaml` | Records exact source and skill identities. | `skillctl lock` generates it. The authority owner reviews it. |
 
-All files use `schema_version: 1`. The schemas reject duplicate YAML keys and unknown fields.
+Owner-authored files use `schema_version: 1`; generated locks use `schema_version: 2` and name
+their hash algorithm. The schemas reject duplicate YAML keys and unknown fields. A legacy v1 lock
+still validates so `skillctl lock` can replace it, but deployment commands reject it rather than
+silently comparing legacy and portable hashes.
 
 ### 1. Copy the safe example
 
@@ -223,8 +226,8 @@ Verification receipts bind deterministic provenance for the complete configurati
 shared inputs and either `delegations.yaml` or every `delegations/<target-id>.yaml`, each by its
 relative name and SHA-256. A scoped receipt contains only the selected target fingerprint but
 still hashes every configuration input. It also records the exact repository commit when
-available. Canonical receipt bytes are content-addressed, so identical evidence has the same
-receipt filename and bytes.
+available and the portable hash algorithm for every locked source. Canonical receipt bytes are
+content-addressed, so identical evidence has the same receipt filename and bytes.
 
 ### Migrate from `delegations.yaml`
 

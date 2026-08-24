@@ -212,7 +212,13 @@ def test_lock_cli_wraps_posix_competing_directory_race_as_precise_exit_2(
         assert src_dir_fd is not None
         assert src_dir_fd == dst_dir_fd
         cache_destination = (
-            project / "var" / "cache" / "sources" / "example" / os.fsdecode(destination)
+            project
+            / "var"
+            / "cache"
+            / "sources"
+            / "example"
+            / "sha256-portable-v2"
+            / os.fsdecode(destination)
         )
         cache_destination.mkdir()
         (cache_destination / "corrupt").write_text("wrong", encoding="utf-8")

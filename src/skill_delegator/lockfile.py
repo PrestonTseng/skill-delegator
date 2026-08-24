@@ -12,6 +12,7 @@ import yaml
 
 from skill_delegator.errors import SourceError
 from skill_delegator.models import (
+    PORTABLE_HASH_ALGORITHM,
     AuthorityConfig,
     LockedSkill,
     LockedSource,
@@ -88,12 +89,17 @@ def build_lock(config: AuthorityConfig, resolved_sources: tuple[ResolvedSource, 
     )
     if missing_references:
         raise SourceError(f"missing locked skill reference: {', '.join(missing_references)}")
-    return SkillLock(schema_version=1, sources=tuple(locked_sources))
+    return SkillLock(
+        schema_version=2,
+        sources=tuple(locked_sources),
+        hash_algorithm=PORTABLE_HASH_ALGORITHM,
+    )
 
 
 def _document(lock: SkillLock) -> dict[str, object]:
     return {
         "schema_version": lock.schema_version,
+        **({"hash_algorithm": lock.hash_algorithm} if lock.schema_version >= 2 else {}),
         "sources": [
             {
                 "source_id": source.source_id,

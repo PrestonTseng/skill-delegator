@@ -752,6 +752,7 @@ def bind_verification_evidence(
                 kind,
                 revision,
                 source.tree_hash,
+                lock.hash_algorithm,
             )
         )
     commit, available = _repository_commit(
