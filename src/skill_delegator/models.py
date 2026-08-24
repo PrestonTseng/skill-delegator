@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from skill_delegator.config_snapshot import ConfigInputSnapshot
 
+PORTABLE_HASH_ALGORITHM = "sha256-portable-v2"
+LEGACY_HASH_ALGORITHM = "sha256-legacy-v1"
+
 
 @dataclass(frozen=True)
 class SourceSpec:
@@ -150,6 +153,7 @@ class SkillLock:
 
     schema_version: int
     sources: tuple[LockedSource, ...]
+    hash_algorithm: str = PORTABLE_HASH_ALGORITHM
 
 
 @dataclass(frozen=True)
@@ -305,6 +309,7 @@ class LockedSourceIdentity:
     revision_kind: str
     revision: str
     tree_identity: str | None
+    hash_algorithm: str = PORTABLE_HASH_ALGORITHM
 
 
 @dataclass(frozen=True)

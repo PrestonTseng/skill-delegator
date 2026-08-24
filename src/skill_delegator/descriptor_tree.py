@@ -16,6 +16,7 @@ from skill_delegator.inventory import (
     _validate_relative_root,
 )
 from skill_delegator.models import SkillArtifact
+from skill_delegator.source_ignore import IgnoreRules
 
 _OPEN_BASE = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
 _OPEN_DIRECTORY = _OPEN_BASE | getattr(os, "O_DIRECTORY", 0)
@@ -88,8 +89,24 @@ def _read_file_at(directory_fd: int, name: bytes, metadata: os.stat_result, path
         os.close(file_fd)
 
 
-def _walk_at(directory_fd: int, prefix: bytes = b"") -> list[_TreeEntry]:
+def _walk_at(
+    directory_fd: int,
+    prefix: bytes = b"",
+    inherited: IgnoreRules | None = None,
+    *,
+    reject_ignored: bool = False,
+) -> list[_TreeEntry]:
     before_names = _names_at(directory_fd)
+    prefix_parts = tuple(prefix.split(b"/")) if prefix else ()
+    rules = inherited or IgnoreRules()
+    if b".gitignore" in before_names:
+        try:
+            ignore_metadata = os.stat(b".gitignore", dir_fd=directory_fd, follow_symlinks=False)
+        except OSError as error:
+            raise SourceError(f"cannot inspect source path '.gitignore': {error}") from error
+        if stat.S_ISREG(ignore_metadata.st_mode):
+            payload = _read_file_at(directory_fd, b".gitignore", ignore_metadata, b".gitignore")
+            rules = rules.extend(prefix_parts, payload)
     entries: list[_TreeEntry] = []
     for name in before_names:
         path = name if not prefix else prefix + b"/" + name
@@ -97,6 +114,12 @@ def _walk_at(directory_fd: int, prefix: bytes = b"") -> list[_TreeEntry]:
             metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
         except OSError as error:
             raise SourceError(f"cannot inspect source path {_display(path)}: {error}") from error
+        path_parts = (*prefix_parts, name)
+        directory_entry = stat.S_ISDIR(metadata.st_mode)
+        if rules.ignored(path_parts, directory=directory_entry):
+            if reject_ignored:
+                raise SourceError(f"ignored entry present in filtered snapshot: {_display(path)}")
+            continue
         mode = stat.S_IMODE(metadata.st_mode)
         if stat.S_ISLNK(metadata.st_mode):
             try:
@@ -123,7 +146,7 @@ def _walk_at(directory_fd: int, prefix: bytes = b"") -> list[_TreeEntry]:
                 if not stat.S_ISDIR(opened.st_mode) or not _same_identity(metadata, opened):
                     raise SourceError(f"source mutated during traversal: {_display(path)}")
                 entries.append(_TreeEntry(path, mode, b"D", b"", metadata.st_dev, metadata.st_ino))
-                entries.extend(_walk_at(child_fd, path))
+                entries.extend(_walk_at(child_fd, path, rules, reject_ignored=reject_ignored))
                 if not _same_identity(opened, os.fstat(child_fd)):
                     raise SourceError(f"source mutated during traversal: {_display(path)}")
             finally:
@@ -208,10 +231,10 @@ def _validate_symlink(
         pending = [*target, *pending]
 
 
-def validate_tree_at(root_fd: int, *, snapshot: bool) -> None:
+def validate_tree_at(root_fd: int, *, snapshot: bool, reject_ignored: bool = False) -> None:
     """Validate a retained source tree without resolving children through a path."""
 
-    entries = _walk_at(root_fd)
+    entries = _walk_at(root_fd, reject_ignored=reject_ignored)
     by_path = {tuple(entry.path.split(b"/")): entry for entry in entries}
     root_metadata = os.fstat(root_fd)
     root_identity = (root_metadata.st_dev, root_metadata.st_ino)
@@ -348,7 +371,7 @@ def copy_tree_into_at(source_fd: int, destination_fd: int) -> None:
                 file_fd = os.open(entry.path, flags, mode=0o600, dir_fd=destination_fd)
                 try:
                     _write_all(file_fd, entry.payload, entry.path)
-                    os.fchmod(file_fd, entry.mode)
+                    os.fchmod(file_fd, 0o755 if entry.mode & 0o111 else 0o644)
                 finally:
                     os.close(file_fd)
         except SourceError:
@@ -358,7 +381,7 @@ def copy_tree_into_at(source_fd: int, destination_fd: int) -> None:
     for entry in reversed(directories):
         directory_fd = os.open(entry.path, _OPEN_DIRECTORY, dir_fd=destination_fd)
         try:
-            os.fchmod(directory_fd, entry.mode)
+            os.fchmod(directory_fd, 0o755)
         finally:
             os.close(directory_fd)
 

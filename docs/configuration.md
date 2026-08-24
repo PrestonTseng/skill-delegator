@@ -10,7 +10,8 @@ One authority uses four shared YAML files (`authority.yaml`, `sources.yaml`, `po
 neither exists. The legacy format remains supported; use the per-target format when target
 declarations are deployed independently.
 
-All files use `schema_version: 1`. Strict JSON Schema rules reject unknown fields and duplicate YAML keys.
+Owner-authored files use `schema_version: 1`. Generated locks use `schema_version: 2`. Strict JSON
+Schema rules reject unknown fields and duplicate YAML keys.
 
 Paths are relative to the configuration directory unless a field permits an absolute path.
 
@@ -158,7 +159,8 @@ uv run skillctl lock --config my-config
 A filesystem lock has this shape:
 
 ```yaml
-schema_version: 1
+schema_version: 2
+hash_algorithm: sha256-portable-v2
 sources:
 - source_id: shared
   type: filesystem
@@ -172,7 +174,18 @@ sources:
 
 A Git lock also records `resolved_commit`. It contains the exact 40-character Git commit ID.
 
-`tree_hash` identifies the complete locked source snapshot. Each skill also has its own content hash.
+`tree_hash` identifies the source-oriented locked snapshot. Each skill also has its own content
+hash. Portable Hash V2 normalizes directory and symlink modes and retains only the regular-file
+executable distinction. Source-local `.gitignore` files are the sole generated/dependency
+exclusion policy: nested rules, negation, rooted patterns, and directory patterns are honored;
+the `.gitignore` files themselves are hashed. Global excludes, `.git/info/exclude`, user Git
+configuration, and ambient repository settings are never consulted. Ordinary nonignored
+untracked files remain identity-bearing.
+
+Legacy schema-v1 locks remain schema-valid only as a bounded migration input. Commands that
+consume exact identities fail with a concise instruction to run `skillctl lock`; the regenerated
+v2 lock explicitly separates portable identities from legacy hashes. Cached snapshots are likewise
+namespaced as `<source-id>/<hash-algorithm>/<revision>`.
 
 The tool checks source sets, types, paths, canonical IDs, runtime names, pool entries, grants, and hashes at each consumption boundary.
 
@@ -230,7 +243,7 @@ names and SHA-256 values for the four shared files and either the single `delega
 every singular `delegations/<target-id>.yaml`. A target-scoped operation still binds every config
 file, while its target fingerprints and operation counts cover only the selected target.
 
-The evidence also identifies every locked source and records the exact repository commit when it
+The evidence also identifies every locked source, its hash algorithm, and the exact repository commit when it
 is available (or explicitly records that it is unavailable). Configuration names and evidence
 collections are deterministically ordered. A converged verification receipt is canonical JSON;
 its filename is the SHA-256 of its bytes. Repeating verification against identical repository,

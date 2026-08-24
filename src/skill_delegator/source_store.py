@@ -18,7 +18,13 @@ from skill_delegator.descriptor_tree import (
     validate_tree_at,
 )
 from skill_delegator.errors import SourceError
-from skill_delegator.models import AuthorityConfig, ResolvedSkill, ResolvedSource, SourceSpec
+from skill_delegator.models import (
+    PORTABLE_HASH_ALGORITHM,
+    AuthorityConfig,
+    ResolvedSkill,
+    ResolvedSource,
+    SourceSpec,
+)
 from skill_delegator.safe_paths import (
     AnchoredDirectory,
     open_anchored_directory,
@@ -34,7 +40,15 @@ def _run_git(args: list[str], *, cwd: Path | None = None, cwd_fd: int | None = N
     if cwd is not None and cwd_fd is not None:
         raise SourceError("git command received conflicting working directories")
     command = ["git", *args]
-    environment = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    environment.update(
+        {
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_ATTR_NOSYSTEM": "1",
+        }
+    )
     preexec_fn = None
     pass_fds: tuple[int, ...] = ()
     if cwd_fd is not None:
@@ -86,8 +100,12 @@ def _existing_cache_entry(cache: AnchoredDirectory, name: str, expected_hash: st
         raise SourceError("content-addressed cache entry is corrupt")
     entry_fd = cache.open_existing_child(name, description="content-addressed-cache-entry")
     try:
-        validate_tree_at(entry_fd, snapshot=True)
-        if hash_tree_at(entry_fd) != expected_hash:
+        try:
+            validate_tree_at(entry_fd, snapshot=True, reject_ignored=True)
+            valid_hash = hash_tree_at(entry_fd) == expected_hash
+        except SourceError as error:
+            raise SourceError("content-addressed cache entry is corrupt") from error
+        if not valid_hash:
             raise SourceError("content-addressed cache entry is corrupt")
         cache.verify_existing_child(name, entry_fd, description="content-addressed-cache-entry")
         return True
@@ -102,6 +120,7 @@ def _source_cache_root(cache_root: Path, source_id: str) -> AnchoredDirectory:
     cache = _ensure_real_cache_directory(lexical_root, description="content-addressed cache root")
     try:
         cache.open_child(source_id, description="cache-source-directory")
+        cache.open_child(PORTABLE_HASH_ALGORITHM, description="cache-hash-algorithm-directory")
         cache.verify(description="content-addressed-cache")
     except Exception:
         cache.close()
@@ -124,7 +143,7 @@ def _cache_snapshot(
         staging_fd = cache.open_existing_child(staging, description="snapshot-staging")
         try:
             copy_tree_into_at(source_fd, staging_fd)
-            validate_tree_at(staging_fd, snapshot=True)
+            validate_tree_at(staging_fd, snapshot=True, reject_ignored=True)
             if hash_tree_at(staging_fd) != expected_hash:
                 raise SourceError("source changed while its snapshot was being created")
         finally:
@@ -223,7 +242,7 @@ def _resolve_filesystem(source: SourceSpec, cache_root: Path) -> ResolvedSource:
         location=str(source.location),
         revision=revision,
         tree_hash=revision,
-        root=Path(os.path.abspath(cache_root)) / source.id / revision,
+        root=Path(os.path.abspath(cache_root)) / source.id / PORTABLE_HASH_ALGORITHM / revision,
         skills=skills,
     )
 
@@ -293,7 +312,7 @@ def _resolve_git(source: SourceSpec, cache_root: Path) -> ResolvedSource:
             location=source.location,
             revision=revision,
             tree_hash=tree_hash,
-            root=Path(os.path.abspath(cache_root)) / source.id / revision,
+            root=Path(os.path.abspath(cache_root)) / source.id / PORTABLE_HASH_ALGORITHM / revision,
             skills=skills,
         )
     finally:

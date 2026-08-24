@@ -53,7 +53,7 @@ def locked(source_id: str, artifact_id: str, name: str, path: str) -> LockedSour
 
 def test_rejects_grant_absent_from_pool(tmp_path: Path) -> None:
     config = authority(tmp_path, ("one/allowed",), ("one/forbidden",))
-    lock = SkillLock(1, (locked("one", "one/forbidden", "forbidden", "forbidden"),))
+    lock = SkillLock(2, (locked("one", "one/forbidden", "forbidden", "forbidden"),))
     with pytest.raises(ResolutionError, match="outside pool.*one/forbidden"):
         resolve_desired_state(config, lock)
 
@@ -62,13 +62,13 @@ def test_rejects_grant_absent_from_lock(tmp_path: Path) -> None:
     config = authority(tmp_path, ("one/missing",), ("one/missing",))
     with pytest.raises(ResolutionError, match="absent from lock.*one/missing"):
         resolve_desired_state(
-            config, SkillLock(1, (LockedSource("one", "filesystem", None, "f" * 64, ()),))
+            config, SkillLock(2, (LockedSource("one", "filesystem", None, "f" * 64, ()),))
         )
 
 
 def test_rejects_duplicate_grants_even_when_models_bypass_yaml_schema(tmp_path: Path) -> None:
     config = authority(tmp_path, ("one/tool",), ("one/tool", "one/tool"))
-    lock = SkillLock(1, (locked("one", "one/tool", "tool", "tool"),))
+    lock = SkillLock(2, (locked("one", "one/tool", "tool", "tool"),))
     with pytest.raises(ResolutionError, match="duplicate grant.*one/tool"):
         resolve_desired_state(config, lock)
 
@@ -76,7 +76,7 @@ def test_rejects_duplicate_grants_even_when_models_bypass_yaml_schema(tmp_path: 
 def test_rejects_duplicate_runtime_name_per_target_across_sources(tmp_path: Path) -> None:
     config = authority(tmp_path, ("one/a", "two/b"), ("one/a", "two/b"))
     lock = SkillLock(
-        1,
+        2,
         (locked("one", "one/a", "shared", "a"), locked("two", "two/b", "shared", "b")),
     )
     with pytest.raises(ResolutionError, match="duplicate runtime name.*shared"):
@@ -85,7 +85,7 @@ def test_rejects_duplicate_runtime_name_per_target_across_sources(tmp_path: Path
 
 def test_rejects_normalized_target_escape(tmp_path: Path) -> None:
     config = authority(tmp_path, ("one/../../escape",), ("one/../../escape",))
-    lock = SkillLock(1, (locked("one", "one/../../escape", "escape", "escape"),))
+    lock = SkillLock(2, (locked("one", "one/../../escape", "escape", "escape"),))
     with pytest.raises(ResolutionError, match="invalid canonical|outside target root"):
         resolve_desired_state(config, lock)
 
@@ -100,7 +100,7 @@ def test_rejects_normalized_target_path_collision(tmp_path: Path) -> None:
             TargetSpec("second", shared_root, ("one/same",)),
         ),
     )
-    lock = SkillLock(1, (locked("one", "one/same", "same", "same"),))
+    lock = SkillLock(2, (locked("one", "one/same", "same", "same"),))
     with pytest.raises(ResolutionError, match="target path collision"):
         resolve_desired_state(config, lock)
 
@@ -112,7 +112,7 @@ def test_equal_paths_are_isolated_by_multi_file_deployment_scope(tmp_path: Path)
         TargetSpec("first", shared_root, ("one/same",), "delegations/first.yaml"),
         TargetSpec("second", shared_root, ("one/same",), "delegations/second.yaml"),
     )
-    lock = SkillLock(1, (locked("one", "one/same", "same", "same"),))
+    lock = SkillLock(2, (locked("one", "one/same", "same", "same"),))
 
     state = resolve_desired_state(
         replace(config, targets=targets, delegation_mode="multiple"), lock
