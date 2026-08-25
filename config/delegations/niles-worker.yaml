@@ -1,6 +1,6 @@
 schema_version: 1
 target:
-  id: worker
+  id: niles-worker
   root: /opt/data/profiles/worker/skills
   grants:
   - superpowers/executing-plans

@@ -1,6 +1,6 @@
 schema_version: 1
 target:
-  id: reviewer
+  id: niles-reviewer
   root: /opt/data/profiles/reviewer/skills
   grants:
   - superpowers/verification-before-completion
