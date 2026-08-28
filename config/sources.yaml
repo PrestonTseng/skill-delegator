@@ -66,3 +66,8 @@ sources:
     location: https://github.com/dreambigou/eli5
     track: main
     skill_root: skills
+  - id: solid-skills
+    type: git
+    location: https://github.com/ramziddin/solid-skills
+    track: main
+    skill_root: skills

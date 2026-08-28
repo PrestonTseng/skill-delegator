@@ -500,6 +500,15 @@ sources:
     runtime_name: indexed-codebase-inspection
     path: indexed-codebase-inspection
     sha256: 22bd95452dc696f849ef9eed66e6e5b1daefb407351235617e6bc0cc7911da90
+- source_id: solid-skills
+  type: git
+  resolved_commit: b113ce6871c05e4799b0edfa0d268bde8e04a8a6
+  tree_hash: f48b5b29e636ca679c6d8983807983b35413dfb64a8d9b99f54747186992b928
+  skills:
+  - canonical_id: solid-skills/solid
+    runtime_name: solid
+    path: skills/solid
+    sha256: ab9e6352c5f923d7dd4cdbbf70f9672ea4429cde224e9e4c9d412410a2e21672
 - source_id: superpowers
   type: git
   resolved_commit: b36e0829c6d0140e93cfef2ca599b1b07d4a7797
