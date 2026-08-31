@@ -34,6 +34,8 @@ target:
   - mattpocock/engineering/to-tickets
   - simple-english/simple-english
   - diagram-design/diagram-design
+  - sepia/sepia
+  - archify/archify
   - lileesystems/jira-ticket-writer
   - lileesystems/lilee-candidate-tracking-page
   - lileesystems/lilee-confluence-adf-authoring

@@ -1,6 +1,15 @@
 schema_version: 2
 hash_algorithm: sha256-portable-v2
 sources:
+- source_id: archify
+  type: git
+  resolved_commit: 5de7275fe87a66a19d52a4d9b0b3a4f2a5a90115
+  tree_hash: fcf02d6812d478fab6a3d994e2fa2625b6b03d61db4e16a5ddef0f3d307ecd23
+  skills:
+  - canonical_id: archify/archify
+    runtime_name: archify
+    path: archify
+    sha256: 56a6db18610656e9ff3ad83bcfd96da0a12c52ff76f60caa6ad36ace10d808ad
 - source_id: angular
   type: git
   resolved_commit: 5900890c6fd9c1fbd504ef46cd445e8541ec5e72
@@ -113,6 +122,14 @@ sources:
     runtime_name: diagram-design
     path: skills/diagram-design
     sha256: 482a42a2ae641ad95e3d8f9e25fba0463beff9718580c134f7bad514112618f5
+- source_id: editorial-vision-studio
+  type: filesystem
+  tree_hash: cf5e3ba779c672881e7402cc71c25254ac035d29dcd5f9ab4590198411c7b1d3
+  skills:
+  - canonical_id: editorial-vision-studio/editorial-vision-studio
+    runtime_name: editorial-vision-studio
+    path: editorial-vision-studio
+    sha256: 701dcffe2f607a1fcdf4675a562cd06569c591d3d69d8c9970be13a5f2af19f4
 - source_id: eli5
   type: git
   resolved_commit: a766623b062331fdde53467001379b4ddf3acc2f
@@ -463,6 +480,31 @@ sources:
     runtime_name: railway-passenger-door-control
     path: railway-passenger-door-control
     sha256: 1e605faaac726eadeee018806eb59459fc89e42845a28ef6e6dc6ce6717ed448
+- source_id: sepia
+  type: git
+  resolved_commit: 4c8d782f89a6518c0da6c24d5a466733db5ef7ab
+  tree_hash: 0c0be947eb4064d67b7c2aa101d7de81bd2a983aa651333407decb69abc22e5c
+  skills:
+  - canonical_id: sepia/sepia
+    runtime_name: sepia
+    path: skills/sepia
+    sha256: 19a6342590e2a0786f2bf51965bfad31bdba49898185d2a23d243911fd21b210
+  - canonical_id: sepia/sepia-recreate
+    runtime_name: sepia-recreate
+    path: skills/sepia-recreate
+    sha256: 96f0d26b8c124dc2da61419d8105489748779e6bceabc3b3c9d0e3473734365f
+  - canonical_id: sepia/sepia-refactor
+    runtime_name: sepia-refactor
+    path: skills/sepia-refactor
+    sha256: a38af7af9340b3775f61937c7175189634d21fd04dce986480553976d2b2af60
+  - canonical_id: sepia/sepia-review
+    runtime_name: sepia-review
+    path: skills/sepia-review
+    sha256: b3491550a96a40b7d5a8aa71db0ee430aed268cb6e0a6ced5a56d49c16befea7
+  - canonical_id: sepia/sepia-write
+    runtime_name: sepia-write
+    path: skills/sepia-write
+    sha256: 75726c325bc6caf764292b8db2d76529d238b131e97fc510960d35069c69653e
 - source_id: simple-english
   type: git
   resolved_commit: 8e8a008a13e4b478f9ccc20ca16e79aef66c0739

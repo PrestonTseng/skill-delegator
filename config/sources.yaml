@@ -71,3 +71,17 @@ sources:
     location: https://github.com/ramziddin/solid-skills
     track: main
     skill_root: skills
+  - id: sepia
+    type: git
+    location: https://github.com/Nanako0129/sepia.git
+    track: main
+    skill_root: skills
+  - id: archify
+    type: git
+    location: https://github.com/tt-a1i/archify.git
+    track: main
+    skill_root: .
+  - id: editorial-vision-studio
+    type: filesystem
+    location: ../src/skill_source/editorial-vision-studio
+    skill_root: .

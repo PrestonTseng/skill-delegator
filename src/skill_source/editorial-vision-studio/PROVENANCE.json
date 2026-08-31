@@ -1,0 +1,445 @@
+{
+  "extraction_method": "git archive --format=tar <exact-commit> extracted below editorial-vision-studio/",
+  "source_id": "editorial-vision-studio",
+  "tracked_entries": [
+    {
+      "git_blob": "9fa88ac4d3771d31825dd02855e71afc986d8784",
+      "git_mode": "100644",
+      "path": ".gitignore"
+    },
+    {
+      "git_blob": "c4bf614de86fe35305b350434cdfdf1a19fef21b",
+      "git_mode": "100644",
+      "path": "LICENSE"
+    },
+    {
+      "git_blob": "a9899a741427373620f0115dcc40740af046ec74",
+      "git_mode": "100644",
+      "path": "README.en.md"
+    },
+    {
+      "git_blob": "a835cc60e5831d8d7e06504ee1e1ddc20eb04b90",
+      "git_mode": "100644",
+      "path": "README.md"
+    },
+    {
+      "git_blob": "ebd5140adb47c48b7e2b4a0a36946702692207fb",
+      "git_mode": "100644",
+      "path": "SKILL.md"
+    },
+    {
+      "git_blob": "c5adc0f7c119613a15bf4ec3bd1958016cf0a2b8",
+      "git_mode": "100644",
+      "path": "adapters/_template.md"
+    },
+    {
+      "git_blob": "2555b7ec0789dc4c2c467d5371f2bd09bf4d576a",
+      "git_mode": "100644",
+      "path": "adapters/flux.md"
+    },
+    {
+      "git_blob": "31d601e961090b88cb6ae779f99627e3f4fd2068",
+      "git_mode": "100644",
+      "path": "adapters/generic.md"
+    },
+    {
+      "git_blob": "e9e4326f14acf81350fb4b92efe0c39b766ef4bc",
+      "git_mode": "100644",
+      "path": "adapters/gpt-image.md"
+    },
+    {
+      "git_blob": "dedb43461299d9fb2d2babb62220878035cd3c86",
+      "git_mode": "100644",
+      "path": "adapters/ideogram.md"
+    },
+    {
+      "git_blob": "a9993654511e5e6c40f63021d08a827f4519b203",
+      "git_mode": "100644",
+      "path": "adapters/registry.md"
+    },
+    {
+      "git_blob": "1efc4cdc08b75b64b644e6d98f50fc99c4668ccd",
+      "git_mode": "100644",
+      "path": "agents/openai.yaml"
+    },
+    {
+      "git_blob": "b2c98f6da6c7c721148057c13637898cabd50523",
+      "git_mode": "100644",
+      "path": "assets/examples/autumn-walk-postcard.webp"
+    },
+    {
+      "git_blob": "1f7a58f41a85da92a009677b57fe7dfd71bf4e90",
+      "git_mode": "100644",
+      "path": "assets/examples/harbor-postcard.webp"
+    },
+    {
+      "git_blob": "5b7112c17cdf3c1663e7885a3523d047ae59f5ce",
+      "git_mode": "100644",
+      "path": "assets/examples/mountain-dawn-postcard.webp"
+    },
+    {
+      "git_blob": "a8dee8b988f75056f9fcce1f235cfaa5e41bd08e",
+      "git_mode": "100644",
+      "path": "assets/examples/mountain-valley-postcard.webp"
+    },
+    {
+      "git_blob": "423a1857a29778cd7840a49eef891e614b622d59",
+      "git_mode": "100644",
+      "path": "assets/examples/osaka-castle-postcard.webp"
+    },
+    {
+      "git_blob": "86f4a24ad65dd0adc4d56fcb7f30c777c53a50e7",
+      "git_mode": "100644",
+      "path": "assets/examples/pavilion-postcard.webp"
+    },
+    {
+      "git_blob": "68a78f4a93b3b8628a789a9193cb6232b5090a56",
+      "git_mode": "100644",
+      "path": "assets/examples/quiet-seat-postcard.webp"
+    },
+    {
+      "git_blob": "ee763ef34868893a2299b8e312ef9515158ac9a6",
+      "git_mode": "100644",
+      "path": "assets/examples/tokyo-tower-postcard.webp"
+    },
+    {
+      "git_blob": "d53093af1252712dac85fffbfaf74c81fc02bedc",
+      "git_mode": "100644",
+      "path": "assets/ground.md"
+    },
+    {
+      "git_blob": "5d4edfc8856a92316556b3732157bae162deb981",
+      "git_mode": "100644",
+      "path": "assets/palette.md"
+    },
+    {
+      "git_blob": "dffd434bdbcfb0f72da83d34383a335e3392bea9",
+      "git_mode": "100644",
+      "path": "assets/scene-construction.md"
+    },
+    {
+      "git_blob": "bd801284ffcb82c0db101d7ee6d7b7e1d20fcd97",
+      "git_mode": "100644",
+      "path": "assets/texture.md"
+    },
+    {
+      "git_blob": "1d0c6b1fd36a97cffba8ed519822e44c23b2be47",
+      "git_mode": "100644",
+      "path": "assets/typography.md"
+    },
+    {
+      "git_blob": "db32d31459a45d4bdc6580109819f24973137b07",
+      "git_mode": "100644",
+      "path": "assets/variation-engine.md"
+    },
+    {
+      "git_blob": "94dca89b6d6f4fb6a7b1d16d99fcb07d3d01d767",
+      "git_mode": "100644",
+      "path": "layouts/brand-key-visual.md"
+    },
+    {
+      "git_blob": "9e04952e0a86feb9f999b22c37ba3b2a4de8d9e4",
+      "git_mode": "100644",
+      "path": "layouts/campaign-poster.md"
+    },
+    {
+      "git_blob": "4b7f2d9a3a18d4c0a00c4dc5fa23847c255cc449",
+      "git_mode": "100644",
+      "path": "layouts/editorial-spread.md"
+    },
+    {
+      "git_blob": "0fd4e7fa3ed69825c9b2cd71fbe7aa54363a27ce",
+      "git_mode": "100644",
+      "path": "layouts/gallery-print.md"
+    },
+    {
+      "git_blob": "b02a3a299c4f510cb0647cbe351aa46bc3f1929c",
+      "git_mode": "100644",
+      "path": "layouts/interface-asset.md"
+    },
+    {
+      "git_blob": "3751df0bfdc7617daf970e03eec81f603b965015",
+      "git_mode": "100644",
+      "path": "layouts/magazine-cover.md"
+    },
+    {
+      "git_blob": "466392510b8a52dba35ab737a01a94c1f4256994",
+      "git_mode": "100644",
+      "path": "layouts/moodboard.md"
+    },
+    {
+      "git_blob": "9fc352a08697c38512a3e3a655cb42bbc3c228d8",
+      "git_mode": "100644",
+      "path": "layouts/photo-abstract-diptych.md"
+    },
+    {
+      "git_blob": "85abbac04ae59d1da0da69b652a9688ce90d28e4",
+      "git_mode": "100644",
+      "path": "layouts/poster.md"
+    },
+    {
+      "git_blob": "8e371822f4619da6bfd89145fc587da5d3069ebf",
+      "git_mode": "100644",
+      "path": "layouts/presentation-deck.md"
+    },
+    {
+      "git_blob": "6a2c52ed1c13b6a96ec771dd2a77bcb54b1ebb55",
+      "git_mode": "100644",
+      "path": "layouts/product-editorial.md"
+    },
+    {
+      "git_blob": "1249b4265777d9607729bef3ba7f369a0fd1c612",
+      "git_mode": "100644",
+      "path": "layouts/social-asset.md"
+    },
+    {
+      "git_blob": "b77e4ac1ab357c15d138c43e9a0b161de7acb110",
+      "git_mode": "100644",
+      "path": "layouts/website-hero.md"
+    },
+    {
+      "git_blob": "8b15fdf9e7fded580fc812255d7fe19e6b1d8401",
+      "git_mode": "100644",
+      "path": "layouts/zine.md"
+    },
+    {
+      "git_blob": "0577a5b58ea6ddc5b923bb2e4a963a95e2ae0d1f",
+      "git_mode": "100644",
+      "path": "presets/_template.md"
+    },
+    {
+      "git_blob": "56ea67f46d9820ac5cb67864e28fb8d9e5f3f7e6",
+      "git_mode": "100644",
+      "path": "presets/ivory-postcard.md"
+    },
+    {
+      "git_blob": "d3453550eedc9c943d00fdb591e273540bb57f88",
+      "git_mode": "100644",
+      "path": "presets/papercraft-diorama-postcard.md"
+    },
+    {
+      "git_blob": "17afaef735f78025b89fe6ae169099a05d1a788a",
+      "git_mode": "100644",
+      "path": "presets/registry.md"
+    },
+    {
+      "git_blob": "0d26bc2859b14ec6095d05431b1079d58dd23c17",
+      "git_mode": "100644",
+      "path": "presets/vintage-travel-poster.md"
+    },
+    {
+      "git_blob": "bb154f0cd2cfa12400f88d0e1f41f626c5da079c",
+      "git_mode": "100644",
+      "path": "prompts/analyzer.md"
+    },
+    {
+      "git_blob": "6a232f615d3d8c5eb9d166c336ea9d651e5dc1a1",
+      "git_mode": "100644",
+      "path": "prompts/art-direction.md"
+    },
+    {
+      "git_blob": "12f6db3bca854ae7b80deb41bdc529974cadc95f",
+      "git_mode": "100644",
+      "path": "prompts/compiler.md"
+    },
+    {
+      "git_blob": "ffec1271b1ddd32c79f7f17bbd4c76a590fd4f26",
+      "git_mode": "100644",
+      "path": "prompts/evaluator.md"
+    },
+    {
+      "git_blob": "66a63bdd620167ebc39e1f9c376a49f162166de8",
+      "git_mode": "100644",
+      "path": "prompts/intent.md"
+    },
+    {
+      "git_blob": "2262ccba81063b3ed1f91ec7605da7d04fa4defc",
+      "git_mode": "100644",
+      "path": "prompts/iteration.md"
+    },
+    {
+      "git_blob": "e4f24bae75c92a07b8c846f592c5a7c3e56b5d4b",
+      "git_mode": "100644",
+      "path": "prompts/optimizer.md"
+    },
+    {
+      "git_blob": "8c37448739c8c9b17eb3a9dae25b64a7318023b0",
+      "git_mode": "100644",
+      "path": "prompts/planner.md"
+    },
+    {
+      "git_blob": "fcefab1c4189993bdd809b334f93aed48a5325c1",
+      "git_mode": "100644",
+      "path": "prompts/recovery.md"
+    },
+    {
+      "git_blob": "8f5ce36a1b246805851c33947a7e296f5676ba78",
+      "git_mode": "100644",
+      "path": "prompts/reviewer.md"
+    },
+    {
+      "git_blob": "eb75cf6c194493d7a37b030a7e144bab723dc10d",
+      "git_mode": "100644",
+      "path": "prompts/series.md"
+    },
+    {
+      "git_blob": "0e6fd2b7598b7c05b719b1c17fa91f616ece5506",
+      "git_mode": "100644",
+      "path": "prompts/style-brief.md"
+    },
+    {
+      "git_blob": "a5d0349bd7dea67b9491628402b852c4781cb924",
+      "git_mode": "100644",
+      "path": "prompts/style-gate.md"
+    },
+    {
+      "git_blob": "2fefe6a20c55466cddb4ef068d8e1e1f24bac197",
+      "git_mode": "100644",
+      "path": "prompts/visual-language.md"
+    },
+    {
+      "git_blob": "916af506a0d6a9d37eed1b4b3b2d0fb5aa010ee6",
+      "git_mode": "100644",
+      "path": "prompts/visual-memory.md"
+    },
+    {
+      "git_blob": "71d4cccdfc525f5596cad2e60eabe65b0df985ef",
+      "git_mode": "100644",
+      "path": "recovery/background.md"
+    },
+    {
+      "git_blob": "6ea6d1f85ecc4a22fab433d5ab2706d022fe968b",
+      "git_mode": "100644",
+      "path": "recovery/composition.md"
+    },
+    {
+      "git_blob": "181c2e3b443233ab7b7d1e138416121f3ce3bbd5",
+      "git_mode": "100644",
+      "path": "recovery/contrast.md"
+    },
+    {
+      "git_blob": "196e5fa72c136df3b3e396ed0e68b85deb33519f",
+      "git_mode": "100644",
+      "path": "recovery/focus.md"
+    },
+    {
+      "git_blob": "3d88d8a7d546db525416a6513ffc00a0311b0f77",
+      "git_mode": "100644",
+      "path": "recovery/geometry.md"
+    },
+    {
+      "git_blob": "883d6f07f71aee004c7179b2b6265174826e20d6",
+      "git_mode": "100644",
+      "path": "recovery/lighting.md"
+    },
+    {
+      "git_blob": "a9b850b5528868c709a81af464408085d1977c68",
+      "git_mode": "100644",
+      "path": "recovery/palette.md"
+    },
+    {
+      "git_blob": "51aa7d27594c1b83b96a6d38f6715db91eb8e508",
+      "git_mode": "100644",
+      "path": "recovery/subject.md"
+    },
+    {
+      "git_blob": "d0828ae73f17e3c32037c72839ac6591a36f6ab0",
+      "git_mode": "100644",
+      "path": "recovery/texture.md"
+    },
+    {
+      "git_blob": "17c9f96a941f1fae61b58356e3e35cf22a5328d2",
+      "git_mode": "100644",
+      "path": "recovery/typography.md"
+    },
+    {
+      "git_blob": "d24123edadd00cbf5b85aa2062bfc2cb5073462d",
+      "git_mode": "100644",
+      "path": "reference/architecture.md"
+    },
+    {
+      "git_blob": "4f1a0e20a5e4abb3d70f8b7aed3d0548d94ec197",
+      "git_mode": "100644",
+      "path": "reference/decision-tree.md"
+    },
+    {
+      "git_blob": "547d0bbf56a6f35296331ea58963153896169a37",
+      "git_mode": "100644",
+      "path": "spec/editorial-spec.schema.md"
+    },
+    {
+      "git_blob": "de47c5a9a5a236e1787c8b58006685f74dabc669",
+      "git_mode": "100644",
+      "path": "spec/visual-manifest.schema.md"
+    },
+    {
+      "git_blob": "1cd75c35e03cb65b4cacbde500afddedb98b4009",
+      "git_mode": "100644",
+      "path": "spec/visual-memory.schema.md"
+    },
+    {
+      "git_blob": "89121d6e985b4d0e8acc6325ac874b7dd72832ab",
+      "git_mode": "100644",
+      "path": "styles/_template.md"
+    },
+    {
+      "git_blob": "6fc8213b9979bdfaf1475b3acb80b3be9c8f8684",
+      "git_mode": "100644",
+      "path": "styles/apartamento.md"
+    },
+    {
+      "git_blob": "d812cb3a292ff1e788e0ebc5ff54822d2638362f",
+      "git_mode": "100644",
+      "path": "styles/brutalist.md"
+    },
+    {
+      "git_blob": "2d225e987b6c73c8309e8ef7ca4642e5978095bb",
+      "git_mode": "100644",
+      "path": "styles/cos.md"
+    },
+    {
+      "git_blob": "b2b2fe54bf2d850293fa1c0e41de394e7743e165",
+      "git_mode": "100644",
+      "path": "styles/kinfolk.md"
+    },
+    {
+      "git_blob": "217a7933daa466cead79ab7950e115f7bf3af1bb",
+      "git_mode": "100644",
+      "path": "styles/monocle.md"
+    },
+    {
+      "git_blob": "538a2adbf3df8eae39a7846178af7a39ed88ed11",
+      "git_mode": "100644",
+      "path": "styles/muji.md"
+    },
+    {
+      "git_blob": "b7cafcd30f95762a49b5a82803259893faadb75f",
+      "git_mode": "100644",
+      "path": "styles/popeye.md"
+    },
+    {
+      "git_blob": "3c5384371c6420550f2bdb37373641a751669db2",
+      "git_mode": "100644",
+      "path": "styles/purple.md"
+    },
+    {
+      "git_blob": "ea3c46ac8783c58d293b9409ab1cf4bb4a93f6a1",
+      "git_mode": "100644",
+      "path": "styles/swiss.md"
+    },
+    {
+      "git_blob": "d3526feef19fa569004a6d3d2a982133e7df8567",
+      "git_mode": "100644",
+      "path": "styles/travel-poster.md"
+    },
+    {
+      "git_blob": "c85b852a21eafa294599d643992a452dc99ea49f",
+      "git_mode": "100644",
+      "path": "styles/wallpaper.md"
+    }
+  ],
+  "tracked_entry_count": 87,
+  "upstream_commit": "db106875bdb6695f54aa7ce1bdd0123247760e87",
+  "upstream_tree": "3258e8b343f891dcb356d86df3055c9ce23f9784",
+  "upstream_url": "https://github.com/Yu-0312/editorial-vision-studio.git"
+}

@@ -8,6 +8,9 @@ target:
   - anthropic/canvas-design
   - anthropic/webapp-testing
   - diagram-design/diagram-design
+  - sepia/sepia
+  - archify/archify
+  - editorial-vision-studio/editorial-vision-studio
   - ui-ux-pro-max-skill/ui-styling
   - ui-ux-pro-max-skill/ui-ux-pro-max
   - ui-ux-pro-max-skill/slides

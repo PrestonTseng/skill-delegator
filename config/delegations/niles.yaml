@@ -35,6 +35,9 @@ target:
   - mattpocock/engineering/to-tickets
   - simple-english/simple-english
   - diagram-design/diagram-design
+  - sepia/sepia
+  - archify/archify
+  - editorial-vision-studio/editorial-vision-studio
   - humanizer-zh-tw/humanizer-zh-tw
   - software-development/code-change-planning
   - software-development/compose-managed-rca
