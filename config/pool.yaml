@@ -103,6 +103,7 @@ skills:
   - software-development/code-change-planning
   - software-development/compose-managed-rca
   - software-development/cross-service-operation-semantics
+  - software-development/deterministic-evidence-review
   - software-development/focused-diff-review
   - software-development/gerrit-code-review
   - software-development/indexed-codebase-inspection

@@ -516,7 +516,7 @@ sources:
     sha256: 9196b4383b69010a9044131248b6f74b87fc5366925156f8c3f0f917893d2907
 - source_id: software-development
   type: filesystem
-  tree_hash: 7f3e3a3fe0cb1b9dd6ec6cecf44a9e3a20626a8801a99052cce911b993120804
+  tree_hash: de481d14e0c2322c6b03ca0243046f7fcb608f24ffb1cf4b9b7733d8676af640
   skills:
   - canonical_id: software-development/code-change-planning
     runtime_name: code-change-planning
@@ -530,6 +530,10 @@ sources:
     runtime_name: cross-service-operation-semantics
     path: cross-service-operation-semantics
     sha256: 522f94848983a7313a03dbcc796cf16d1911dbae692f791aa8b787ada6c913fa
+  - canonical_id: software-development/deterministic-evidence-review
+    runtime_name: deterministic-evidence-review
+    path: deterministic-evidence-review
+    sha256: 87374ace766555f7b97b2819e1551c4ec632f75fe712f82e9ff70fcc5a953bc4
   - canonical_id: software-development/focused-diff-review
     runtime_name: focused-diff-review
     path: focused-diff-review

@@ -4,6 +4,7 @@ target:
   root: /opt/data/profiles/reviewer/skills
   grants:
   - superpowers/verification-before-completion
+  - software-development/deterministic-evidence-review
   - software-development/focused-diff-review
   - anthropic/webapp-testing
   - ui-ux-pro-max-skill/ui-ux-pro-max
