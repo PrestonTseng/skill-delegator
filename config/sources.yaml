@@ -39,6 +39,10 @@ sources:
     type: filesystem
     location: ../src/skill_source/humanizer-zh-tw
     skill_root: .
+  - id: agent-operations
+    type: filesystem
+    location: ../src/skill_source/agent-operations
+    skill_root: .
   - id: lileesystems
     type: filesystem
     location: ../src/skill_source/lileesystems

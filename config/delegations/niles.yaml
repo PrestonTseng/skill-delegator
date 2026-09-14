@@ -39,6 +39,8 @@ target:
   - archify/archify
   - editorial-vision-studio/editorial-vision-studio
   - humanizer-zh-tw/humanizer-zh-tw
+  - agent-operations/agent-resource-routing
+  - agent-operations/kanban-review-lifecycle
   - software-development/code-change-planning
   - software-development/compose-managed-rca
   - software-development/cross-service-operation-semantics

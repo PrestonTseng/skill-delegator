@@ -1,6 +1,18 @@
 schema_version: 2
 hash_algorithm: sha256-portable-v2
 sources:
+- source_id: agent-operations
+  type: filesystem
+  tree_hash: 58607320fc1615ae14cbbd0e2d3fabc1375530d560c7f3949ed4cd57f8621715
+  skills:
+  - canonical_id: agent-operations/agent-resource-routing
+    runtime_name: agent-resource-routing
+    path: agent-resource-routing
+    sha256: e39dbbc1351e8341ecc28b2bd1778d918d0786d2218c78fc43ad883df0cc5e2e
+  - canonical_id: agent-operations/kanban-review-lifecycle
+    runtime_name: kanban-review-lifecycle
+    path: kanban-review-lifecycle
+    sha256: de9deb70867098f1d888b6a8dade93087bcff25c66e614307181689476e8a6eb
 - source_id: archify
   type: git
   resolved_commit: 5de7275fe87a66a19d52a4d9b0b3a4f2a5a90115

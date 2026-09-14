@@ -9,3 +9,4 @@ target:
   - anthropic/webapp-testing
   - ui-ux-pro-max-skill/ui-ux-pro-max
   - diagram-design/diagram-design
+  - agent-operations/kanban-review-lifecycle
