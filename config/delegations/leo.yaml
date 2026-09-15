@@ -36,6 +36,8 @@ target:
   - diagram-design/diagram-design
   - sepia/sepia
   - archify/archify
+  - agent-operations/agent-resource-routing
+  - agent-operations/kanban-review-lifecycle
   - lileesystems/jira-ticket-writer
   - lileesystems/lilee-candidate-tracking-page
   - lileesystems/lilee-confluence-adf-authoring
