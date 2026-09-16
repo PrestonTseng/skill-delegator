@@ -3,25 +3,16 @@ hash_algorithm: sha256-portable-v2
 sources:
 - source_id: agent-operations
   type: filesystem
-  tree_hash: 58607320fc1615ae14cbbd0e2d3fabc1375530d560c7f3949ed4cd57f8621715
+  tree_hash: cd5a901dd35529b1eb444560e61b95df74db07610a323a584519d30fd5d70d9b
   skills:
   - canonical_id: agent-operations/agent-resource-routing
     runtime_name: agent-resource-routing
     path: agent-resource-routing
-    sha256: e39dbbc1351e8341ecc28b2bd1778d918d0786d2218c78fc43ad883df0cc5e2e
+    sha256: e0b3bf53be705bfcf5939df3989a3f1b8984a7219acb5e6816ac0831b3d86a7e
   - canonical_id: agent-operations/kanban-review-lifecycle
     runtime_name: kanban-review-lifecycle
     path: kanban-review-lifecycle
     sha256: de9deb70867098f1d888b6a8dade93087bcff25c66e614307181689476e8a6eb
-- source_id: archify
-  type: git
-  resolved_commit: 5de7275fe87a66a19d52a4d9b0b3a4f2a5a90115
-  tree_hash: fcf02d6812d478fab6a3d994e2fa2625b6b03d61db4e16a5ddef0f3d307ecd23
-  skills:
-  - canonical_id: archify/archify
-    runtime_name: archify
-    path: archify
-    sha256: 56a6db18610656e9ff3ad83bcfd96da0a12c52ff76f60caa6ad36ace10d808ad
 - source_id: angular
   type: git
   resolved_commit: 5900890c6fd9c1fbd504ef46cd445e8541ec5e72
@@ -116,6 +107,15 @@ sources:
     runtime_name: xlsx
     path: skills/xlsx
     sha256: febb3020b49a0a71f4bfc9d9ba6a37bcfdf0615eeb3796dab89cfb55adcdfc74
+- source_id: archify
+  type: git
+  resolved_commit: 5de7275fe87a66a19d52a4d9b0b3a4f2a5a90115
+  tree_hash: fcf02d6812d478fab6a3d994e2fa2625b6b03d61db4e16a5ddef0f3d307ecd23
+  skills:
+  - canonical_id: archify/archify
+    runtime_name: archify
+    path: archify
+    sha256: 56a6db18610656e9ff3ad83bcfd96da0a12c52ff76f60caa6ad36ace10d808ad
 - source_id: claude-video
   type: git
   resolved_commit: 83da59fa78c3eee9e20f515fe75c438bb5166efd
