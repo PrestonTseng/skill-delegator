@@ -1,7 +1,7 @@
 ---
 name: kanban-review-lifecycle
 description: Choose the correct Kanban review transition by role.
-version: 0.1.0
+version: 0.2.0
 author: Preston Tseng, Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -13,7 +13,7 @@ metadata:
 
 # Kanban Review Lifecycle
 
-Select one review lane and one terminal transition for each assigned card. This Skill explains role boundaries; it does not grant delegation, graph redesign, merge, publication, deployment, or apply authority.
+Select exactly one review lane and one terminal transition for each assigned card. Keep the review verdict (`APPROVED | CHANGES_REQUESTED`) separate from the verification verdict (`VERIFIED | NOT_VERIFIED | INCONCLUSIVE`). This Skill explains role boundaries; it does not grant delegation, graph redesign, merge, publication, deployment, or apply authority.
 
 ## When to Use
 
@@ -28,7 +28,7 @@ Every implementation card must contain exactly one literal field:
 
 `Review route: none | same_card | child:<id>`
 
-Before work and again before the terminal transition, inspect the assigned card, its comments, attachments, parents, and children. If the route is missing, malformed, or inconsistent with the existing graph, stop and return the discrepancy to the coordinator; do not invent or repair the lifecycle.
+Before work and again before the terminal transition, inspect the assigned card, its comments, attachments, parents, and children. If the route is missing, malformed, or inconsistent with the existing graph, stop and return the discrepancy to the coordinator; do not invent or repair the lifecycle. An existing lane or blocked worker is not authority to create another lane or use nested delegation.
 
 ## Role Procedure
 
@@ -40,7 +40,7 @@ Before work and again before the terminal transition, inspect the assigned card,
 
 ### Worker
 
-After implementation and fresh verification:
+After implementation and fresh verification against the final artifact identity:
 
 - `none` → complete the implementation card with evidence.
 - `same_card` → request same-card review once with evidence.
@@ -53,19 +53,20 @@ Use [templates/implementation-card.md](templates/implementation-card.md) for the
 ### Reviewer
 
 - **Same-card review:** approve by completing the reviewed card; request changes on that card with actionable evidence when blocking findings remain.
-- **Separate review child:** complete the child itself with an explicit `APPROVED` or `CHANGES_REQUESTED` verdict, severity counts, and evidence. Never request changes against the completed implementation parent and never create another review lane.
+- **Separate review child:** complete the child itself with an explicit `APPROVED` or `CHANGES_REQUESTED` review verdict, a separate verification verdict, severity counts, and evidence. Never request changes against the completed implementation parent and never create another review lane.
 
 A separate-child `CHANGES_REQUESTED` verdict reports findings only. The coordinator decides whether and how implementation is requeued. Use [templates/review-card.md](templates/review-card.md).
 
 ## Minimum Evidence Ladder
 
-1. Pin the exact task, commit or artifact identity, and authorized scope.
+1. Pin the exact task and Final artifact identity: commit SHA or head plus tree or immutable artifact digest, and the authorized scope.
 2. Inspect the complete diff or deliverable, including untracked in-scope files.
-3. Run the required focused and regression verification against that same identity.
-4. Recheck scope, prohibited side effects, and final identity.
-5. Record commands, exit codes, material results, concerns, and the recommended next action.
+3. Reproduce and verify on the same surface as the reported runtime, UI, or integration behavior when that surface is available. Proxy tests may supplement but cannot replace that proof.
+4. Run the required focused and regression verification against that same identity.
+5. Recheck scope, prohibited side effects, and final identity.
+6. Record commands, exit codes, material results, concerns, and the recommended next action.
 
-Do not mark a card successful from confidence, an earlier run, or another agent's summary alone.
+Do not mark a card successful from confidence, an earlier run, or another agent's summary alone. If the commit, head, tree, or artifact digest changes, every prior review and verification verdict is stale; rerun the evidence ladder on the new identity. If the required same surface is unavailable, report `INCONCLUSIVE` rather than substituting proxy success.
 
 ## Pitfalls
 
@@ -73,7 +74,8 @@ Do not mark a card successful from confidence, an earlier run, or another agent'
 - `kanban_request_review` and a pre-created review child are alternative lanes, not cumulative gates.
 - A separate Reviewer reports a verdict on its own child; it does not mutate the completed parent.
 - Review approval does not imply merge, publication, deployment, apply, or credential authority.
+- `APPROVED` means no blocking review finding remains; it does not silently mean `VERIFIED`.
 
 ## Verification
 
-Before the terminal transition, state the exact route, role, chosen operation, and why the other operations are excluded. Confirm the recorded evidence belongs to the final inspected identity and that no second review lane was created.
+Before the terminal transition, state the exact route, role, chosen operation, and why the other operations are excluded. Record both verdicts, confirm the evidence belongs to the Final artifact identity, confirm applicable runtime proof used the same surface, and confirm exactly one review lane exists.

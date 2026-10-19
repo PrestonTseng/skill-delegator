@@ -1,8 +1,8 @@
 ---
 name: code-change-planning
-description: Plan-first workflow for user-approved code changes before editing, testing, committing, or pushing.
-version: 1.1.0
-author: Hermes Agent
+description: Plan user-approved code changes with real-surface proof.
+version: 1.2.0
+author: Preston Tseng, Hermes Agent
 license: MIT
 platforms: [linux, macos]
 metadata:
@@ -35,8 +35,21 @@ Do not treat a high-confidence fix as permission to modify code. Approval is par
 
 - For bug fixes and behavior changes, follow TDD: write or adjust the failing test first, run it red, then implement.
 - Keep the scope aligned to the approved plan. If investigation reveals a material scope change, stop and present an updated plan before continuing.
+- Reproduce the failure on the real affected surface (runtime, UI, or integration) when that surface is available, then prove the fix on that same surface. Targeted unit or proxy tests may supplement this evidence but are insufficient substitutes.
+- If the real affected surface is unavailable, preserve the strongest proxy evidence but report the verification verdict as `INCONCLUSIVE`; do not relabel proxy success as end-to-end proof.
 - Verify with targeted tests and formatting checks before commit/push.
 - Summarize real command output, not intended results.
+
+## Recurring corrections
+
+When an error class recurs, encode the correction at the strongest sufficient layer, in this order:
+
+1. architecture or data model, so the invalid state cannot be represented or reached;
+2. type, schema, lint, or CI enforcement, so invalid changes fail before runtime;
+3. behavior test, so the observable regression is executable and repeatable;
+4. skill or documentation only when stronger executable controls cannot express the rule.
+
+Use the highest feasible layer that prevents the class without disproportionate complexity. Prose may explain a structural control, but must not replace one merely because it is easier to write.
 
 ## Repository maturity / source-of-truth refactors
 
@@ -63,6 +76,8 @@ For Thalos mid-route stalls involving normal block overlap, route auto-reset, or
 - Do not say "I'll change X" and then edit without approval.
 - Do not bundle unrelated cleanup into an approved bug fix.
 - Do not skip the red test just because the fix is obvious.
+- Do not claim a bug is verified from a proxy when the reported UI, runtime, or integration surface was not exercised; use `INCONCLUSIVE` when that surface is unavailable.
+- Do not answer a recurring structural failure with skill prose alone when architecture, schema, static enforcement, or a behavior test can prevent it.
 - Do not push to Gerrit until commit contents and verification are complete.
 - Do not fix async FSM deadlocks by reverting a callee's new completion semantics when other orchestration already relies on those semantics; plan a local orchestration fix first.
 - If the user changes scope mid-execution or says to stop a branch of work, stop that branch immediately, update the durable task record, and continue only with the still-approved scope.

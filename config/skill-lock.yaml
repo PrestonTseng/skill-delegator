@@ -3,16 +3,16 @@ hash_algorithm: sha256-portable-v2
 sources:
 - source_id: agent-operations
   type: filesystem
-  tree_hash: cd5a901dd35529b1eb444560e61b95df74db07610a323a584519d30fd5d70d9b
+  tree_hash: ed878bd85da04ff81d53e02efd6896c539859512b955bdb09bcad8028c42ba98
   skills:
   - canonical_id: agent-operations/agent-resource-routing
     runtime_name: agent-resource-routing
     path: agent-resource-routing
-    sha256: e0b3bf53be705bfcf5939df3989a3f1b8984a7219acb5e6816ac0831b3d86a7e
+    sha256: f9aa94be2315d921af582dffe42ce642aedee01a2bc089e1b170b0cf0efca158
   - canonical_id: agent-operations/kanban-review-lifecycle
     runtime_name: kanban-review-lifecycle
     path: kanban-review-lifecycle
-    sha256: de9deb70867098f1d888b6a8dade93087bcff25c66e614307181689476e8a6eb
+    sha256: 46f70732dbe0c915b355e0f03b28f86f7b37e72198f7bacf281b827e436df8bd
 - source_id: angular
   type: git
   resolved_commit: 5900890c6fd9c1fbd504ef46cd445e8541ec5e72
@@ -528,12 +528,12 @@ sources:
     sha256: 9196b4383b69010a9044131248b6f74b87fc5366925156f8c3f0f917893d2907
 - source_id: software-development
   type: filesystem
-  tree_hash: de481d14e0c2322c6b03ca0243046f7fcb608f24ffb1cf4b9b7733d8676af640
+  tree_hash: 7d0916dc2e6e5536ee9ed9d06b7a249e00c694d314e928f13cdc0eb8ca8410da
   skills:
   - canonical_id: software-development/code-change-planning
     runtime_name: code-change-planning
     path: code-change-planning
-    sha256: 1dea39a74364c35665bfdfc6370f768ca0bdcfd02595a4096c93075a08ffea24
+    sha256: 56b998cba619793c2381f92823e84067507ed971d60a0fdc525007fa27244665
   - canonical_id: software-development/compose-managed-rca
     runtime_name: compose-managed-rca
     path: compose-managed-rca
