@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -419,7 +420,7 @@ def test_plan_publication_rolls_back_when_directory_sync_fails_after_link(
 
     def fail_first_directory_sync(descriptor: int) -> None:
         nonlocal directory_syncs
-        if os.path.isdir(f"/proc/self/fd/{descriptor}"):
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode):
             directory_syncs += 1
             if directory_syncs == 1:
                 raise OSError("injected")
