@@ -3,7 +3,7 @@ hash_algorithm: sha256-portable-v2
 sources:
 - source_id: agent-operations
   type: filesystem
-  tree_hash: ed878bd85da04ff81d53e02efd6896c539859512b955bdb09bcad8028c42ba98
+  tree_hash: 69f461db886951f7759b1bd65d74f393243b8f999edeb08de7e82318e2778bc0
   skills:
   - canonical_id: agent-operations/agent-resource-routing
     runtime_name: agent-resource-routing
@@ -12,7 +12,7 @@ sources:
   - canonical_id: agent-operations/kanban-review-lifecycle
     runtime_name: kanban-review-lifecycle
     path: kanban-review-lifecycle
-    sha256: 46f70732dbe0c915b355e0f03b28f86f7b37e72198f7bacf281b827e436df8bd
+    sha256: fb4894c447148bda0bc94ae00568d5ebbc1fb48da6596dac79a9fe54b560e8e5
 - source_id: angular
   type: git
   resolved_commit: 5900890c6fd9c1fbd504ef46cd445e8541ec5e72

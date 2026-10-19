@@ -18,4 +18,6 @@ Terminal transition:
 
 Worker boundary: do not delegate, create or rewire tasks, merge, publish, deploy, or apply unless the card separately grants that authority.
 
+Structural correction rule: prevent recurring error classes at the strongest sufficient layer—architecture/data model, then type/schema/lint/CI, then behavior test, with skill/docs prose last.
+
 Identity rule: if the Final artifact identity changes, prior review and verification verdicts are stale and must be rerun. Proxy tests may supplement same-surface proof but cannot replace it; unavailable same-surface proof is `INCONCLUSIVE`.
