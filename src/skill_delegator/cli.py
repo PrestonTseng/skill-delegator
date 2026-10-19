@@ -15,6 +15,13 @@ import yaml
 from skill_delegator.config import load_config
 from skill_delegator.config_snapshot import ConfigInputSnapshot, assert_snapshot_current
 from skill_delegator.errors import ConfigError, SourceError, UpdateError
+from skill_delegator.exact_plan import (
+    ExactPlanError,
+    build_artifact,
+    publish_artifact,
+    read_artifact,
+    verify_locked_sources,
+)
 from skill_delegator.identifiers import is_source_id
 from skill_delegator.lockfile import build_lock, write_lock_atomic
 from skill_delegator.managed_state import TargetStateError, scan_target
@@ -62,11 +69,14 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     plan.add_argument("--json", action="store_true")
     plan.add_argument("--target", metavar="TARGET")
+    plan.add_argument("--out", type=Path, metavar="FILE")
     apply = subparsers.add_parser("apply", help="transactionally apply the validated plan")
     apply.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     apply.add_argument("--yes", action="store_true", help="confirm plans containing REMOVE")
     apply.add_argument("--lock-timeout", type=float, default=5.0, metavar="SECONDS")
     apply.add_argument("--target", metavar="TARGET")
+    apply.add_argument("--plan-file", type=Path, metavar="FILE")
+    apply.add_argument("--plan-sha256", metavar="SHA256")
     verify = subparsers.add_parser("verify", help="freshly verify state and write an audit receipt")
     verify.add_argument("--config", type=Path, default=Path("config"), metavar="PATH")
     verify.add_argument("--target", metavar="TARGET")
@@ -279,6 +289,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if target_id is not None and not is_source_id(target_id):
         print("Target error: invalid target selector", file=sys.stderr)
         return 2
+    if args.command == "apply" and (args.plan_file is None) != (args.plan_sha256 is None):
+        print(
+            "Apply option conflict: --plan-file and --plan-sha256 must be used together",
+            file=sys.stderr,
+        )
+        return 2
     if args.command == "validate":
         try:
             config = load_config(args.config)
@@ -384,6 +400,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(_desired_state_document(state), sort_keys=True, separators=(",", ":")))
         return 0
     if args.command == "plan":
+        digest: str | None = None
+        config: AuthorityConfig | None = None
         try:
             config_dir = args.config.resolve(strict=False)
             config = load_config(config_dir, target_scope=args.target)
@@ -399,19 +417,61 @@ def main(argv: Sequence[str] | None = None) -> int:
                 tuple(scan_target(target) for target in selected_targets), cache_root
             )
             plan = build_plan(desired, current)
+            if args.out is not None:
+                verify_locked_sources(desired)
+                assert config.input_snapshot is not None
+                assert_snapshot_current(config.input_snapshot)
+                payload, digest = build_artifact(config, args.target, plan)
+                publish_artifact(args.out, payload)
         except TargetSelectionError as error:
             print(f"Target error: {error}", file=sys.stderr)
             return 2
         except TargetStateError as error:
             plan = ReconciliationPlan((), (str(error),))
-        except (ConfigError, OSError, ResolutionError) as error:
+            if args.out is not None:
+                try:
+                    assert config is not None
+                    assert config.input_snapshot is not None
+                    assert_snapshot_current(config.input_snapshot)
+                    payload, digest = build_artifact(config, args.target, plan)
+                    publish_artifact(args.out, payload)
+                except (ExactPlanError, ValueError) as artifact_error:
+                    print(f"Plan artifact error: {artifact_error}", file=sys.stderr)
+                    return 3
+        except ExactPlanError as error:
+            print(f"Plan artifact error: {error}", file=sys.stderr)
+            return 3
+        except (ConfigError, OSError, ResolutionError, ValueError) as error:
             print(f"Plan error: {error}", file=sys.stderr)
             return 3
-        _render_plan(plan, json_output=args.json)
+        if args.out is None:
+            _render_plan(plan, json_output=args.json)
+        else:
+            assert digest is not None
+            print(
+                json.dumps(
+                    {"plan_file": str(args.out), "plan_sha256": digest},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
         if plan.blocked:
             return 3
         return 1 if plan.has_changes else 0
     if args.command == "apply":
+        approved_document: dict[str, object] | None = None
+        approved_payload: bytes | None = None
+        if args.plan_file is not None:
+            try:
+                approved_document, approved_payload = read_artifact(
+                    args.plan_file, args.plan_sha256
+                )
+            except ExactPlanError as error:
+                print(f"Apply blocked: {error}", file=sys.stderr)
+                return 3
+            if approved_document["target_scope"] != args.target:
+                print("Apply blocked: target selector differs from approved plan", file=sys.stderr)
+                return 3
         try:
             config_dir = args.config.resolve(strict=False)
             config = load_config(config_dir, target_scope=args.target)
@@ -427,10 +487,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 tuple(scan_target(target) for target in selected_targets), cache_root
             )
             plan = build_plan(desired, current)
+            if approved_document is not None:
+                verify_locked_sources(desired)
+                fresh_payload, _ = build_artifact(config, args.target, plan)
+                if fresh_payload != approved_payload:
+                    raise ExactPlanError("approved plan is stale or does not match current state")
         except TargetSelectionError as error:
             print(f"Target error: {error}", file=sys.stderr)
             return 2
         except TargetStateError as error:
+            print(f"Apply blocked: {error}", file=sys.stderr)
+            return 3
+        except ExactPlanError as error:
             print(f"Apply blocked: {error}", file=sys.stderr)
             return 3
         except (ConfigError, OSError, ResolutionError) as error:
@@ -443,11 +511,34 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("Apply refused: plan contains REMOVE; pass --yes to confirm", file=sys.stderr)
             return 4
         try:
+            if approved_document is not None:
+                assert config.input_snapshot is not None
+                verify_locked_sources(desired)
+                assert_snapshot_current(config.input_snapshot)
             result = apply_plan(plan, lock_timeout=args.lock_timeout)
+        except ExactPlanError as error:
+            print(f"Apply blocked: {error}", file=sys.stderr)
+            return 3
+        except ValueError as error:
+            print(f"Apply blocked: {error}", file=sys.stderr)
+            return 3
         except ApplyError as error:
             print(f"Apply error: {error}", file=sys.stderr)
             return 5
-        if result.changed == 0:
+        if approved_document is not None:
+            print(
+                json.dumps(
+                    {
+                        "changed": result.changed,
+                        "plan_sha256": args.plan_sha256,
+                        "result": "applied" if result.changed else "converged",
+                        "targets": result.targets,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+        elif result.changed == 0:
             print("Already converged")
         else:
             change_word = "change" if result.changed == 1 else "changes"
