@@ -14,7 +14,7 @@ Use `skill-delegator` when you need these controls:
 
 - Keep skill sources and target grants in versioned YAML files.
 - Lock mutable sources to exact Git commits and content hashes.
-- Inspect proposed target changes before `apply` recomputes and executes its plan.
+- Inspect proposed target changes and optionally bind `apply` to the exact reviewed plan bytes.
 - Preserve files and links that the tool does not manage.
 - Detect drift and create content-addressed verification receipts.
 - Keep each authority configuration independent.
@@ -62,7 +62,8 @@ The first `plan` exits with status 1. This status means that the plan contains c
 
 Review every `CREATE`, `REPLACE`, `REMOVE`, and `KEEP` operation before you continue.
 
-CAUTION: `apply` does not consume this displayed plan. It computes and immediately executes a new plan from the current state.
+This displayed plan is informational. An ordinary `apply` computes and immediately executes a new
+plan. Use the exact-plan workflow below when approval must bind to reviewed bytes.
 
 ### 4. Apply and verify the plan
 
@@ -194,7 +195,7 @@ configuration with your normal Git process.
 
 ### 7. Apply and verify the current state
 
-If you accept this V1 limit, run these commands:
+For an ordinary unbound apply, run these commands:
 
 ```console
 uv run skillctl apply --config my-config
@@ -259,9 +260,29 @@ lock → validate → resolve → plan → review and commit → apply (new plan
 
 `apply` is the only command that changes targets.
 
-`apply` recomputes its plan from the current configuration and target state. It does not bind to the displayed `plan` output.
+Ordinary `apply` recomputes its plan from the current configuration and target state. It does not
+bind to displayed `plan` output and remains available for backward compatibility.
 
-If exact plan approval is mandatory, do not use V1 `apply`. V1 has no plan digest or approved plan-file input.
+For exact approval, publish a new canonical artifact, review its bytes and reported SHA-256, then
+provide both to `apply`:
+
+```console
+uv run skillctl plan --out approved-plan.json --config my-config
+uv run skillctl apply \
+  --plan-file approved-plan.json \
+  --plan-sha256 <reported-sha256> \
+  --config my-config
+```
+
+`--out` refuses to replace any existing path. The artifact has no timestamp and binds the
+authority ID, explicit target scope (`null` means unscoped), every carried configuration input by
+name and SHA-256, the exact lock digest, current target fingerprints, operations, blockers, and
+change state. `apply` requires canonical bytes, verifies the supplied digest, reloads configuration,
+rehashes complete locked source snapshots, scans targets again, and requires a byte-identical fresh
+artifact before mutation. Its successful JSON result includes the consumed `plan_sha256`.
+
+For a scoped artifact, repeat the same `--target TARGET` on both commands. Omitting it at apply time
+is a scope mismatch, not an implicit selection.
 
 `verify` reads fresh source and target evidence. It can write a content-addressed receipt.
 
@@ -269,7 +290,8 @@ If exact plan approval is mandatory, do not use V1 `apply`. V1 has no plan diges
 
 ### REMOVE operations
 
-CAUTION: `--yes` authorizes each REMOVE in the new plan that `apply` computes. A REMOVE can erase a manager-owned link.
+CAUTION: `--yes` authorizes each REMOVE in the plan that `apply` executes. A plan digest never
+authorizes deletion by itself. A REMOVE can erase a manager-owned link.
 
 Run `plan` immediately before `apply`. If you accept that limit and expect a REMOVE, use this command:
 
@@ -286,8 +308,8 @@ The tool preserves unmanaged target content. A REMOVE also requires a valid mana
 | `validate` | Validate the complete authority configuration. | No |
 | `lock` | Resolve sources and write the exact lock. | No |
 | `resolve --json` | Show the complete authority desired state. | No |
-| `plan [--json] [--target TARGET]` | Compare desired and current state for all targets or one target. | No |
-| `apply [--yes] [--target TARGET]` | Recompute and immediately apply a new plan for all targets or one target. | Yes |
+| `plan [--json] [--target TARGET] [--out FILE]` | Compare state; optionally publish a canonical exact-plan artifact and digest. | No target write |
+| `apply [--yes] [--target TARGET] [--plan-file FILE --plan-sha256 SHA256]` | Apply a fresh unbound plan, or require exact equality with an approved artifact. | Yes |
 | `verify [--target TARGET]` | Verify fresh evidence and write a receipt for all targets or one target. | No |
 | `status [--json] [--target TARGET]` | Report fresh state for all targets or one target without a receipt. | No |
 | `update --check` | Observe source changes. | No |

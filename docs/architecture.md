@@ -13,8 +13,8 @@ Independent authorities can use the same code and keep separate configuration hi
 ```text
 sources.yaml ──lock──> immutable cache + skill-lock.yaml
 five configuration files ──resolve──> desired state
-desired state + target scan ──plan──> reconciliation plan
-current configuration + fresh target scan ──apply──> new plan + managed state
+desired state + target scan ──plan──> reconciliation plan [optional canonical artifact + digest]
+current configuration + fresh source/target evidence ──apply──> new plan + managed state
 fresh source and target evidence ──verify──> verification receipt
 ```
 
@@ -24,7 +24,25 @@ fresh source and target evidence ──verify──> verification receipt
 
 `apply` is the only command that changes targets. `verify` can write a receipt but does not change sources or targets.
 
-`apply` recomputes and immediately executes a new plan. It does not consume or bind to displayed `plan` output.
+Ordinary `apply` recomputes and immediately executes a new plan. It does not consume or bind to
+displayed `plan` output. The optional `--plan-file` plus `--plan-sha256` mode parses a strict
+schema-versioned canonical artifact, verifies its exact bytes, recreates it from fresh evidence, and
+requires byte equality before mutation.
+
+## Exact Plan Artifacts
+
+`plan --out FILE` publishes canonical JSON with a final newline and reports the SHA-256 of those
+exact bytes. Publication is same-directory atomic, refuses every existing destination, traverses no
+symlinked parent, and removes staging data on failure.
+
+The artifact records no timestamp or mutable source reference. It binds the authority, explicit
+target scope, hashes for the complete carried configuration snapshot, lock digest, current target
+fingerprints, deterministic operations, blockers, and change state. Exact-plan apply also hashes
+each complete locked source snapshot and rechecks the carried configuration immediately before the
+reconciler. The reconciler retains its target fingerprint and source-content checks under its locks.
+
+The artifact digest is approval identity, not deletion authorization. `--yes` remains mandatory for
+every plan containing REMOVE.
 
 ## Skill Identity
 

@@ -273,13 +273,19 @@ def _operation_document(operation: PlanOperation) -> dict[str, object]:
     return document
 
 
-def plan_json(plan: ReconciliationPlan) -> str:
-    """Render canonical JSON with exactly one terminal newline."""
+def plan_document(plan: ReconciliationPlan) -> dict[str, object]:
+    """Render the stable public operation and blocker document."""
 
-    document = {
+    return {
         "blocked": list(plan.blocked),
         "operations": [_operation_document(operation) for operation in plan.operations],
     }
+
+
+def plan_json(plan: ReconciliationPlan) -> str:
+    """Render canonical JSON with exactly one terminal newline."""
+
+    document = plan_document(plan)
     return json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
 
 

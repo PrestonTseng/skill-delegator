@@ -30,6 +30,7 @@ V1 rejects these conditions:
 - broken, missing, escaping, or ambiguously owned managed links
 - collisions with unmanaged content
 - stale plans and target identity changes
+- malformed, noncanonical, tampered, stale, or scope-mismatched exact-plan artifacts
 - concurrent mutation through cooperating `skillctl` processes
 - unsafe receipt or lock publication
 
@@ -101,7 +102,9 @@ A converged receipt proves the checked state at verification time. It does not p
 
 Run the tool with the least required privilege.
 
-Use dedicated target roots when possible. Review lock changes and every plan before `apply`.
+Use dedicated target roots when possible. Review lock changes and every plan before `apply`. Use
+digest-bound apply when approval must cover exact plan bytes; remember that this is local digest
+binding, not a signature or transparency system.
 
 Store receipts outside the managed host if you need independent evidence.
 

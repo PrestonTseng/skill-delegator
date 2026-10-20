@@ -60,15 +60,20 @@ The CLI does not stage, commit, push, merge, or open a pull request.
 
 ```console
 uv run skillctl validate --config my-config
-uv run skillctl plan --json --config my-config
-uv run skillctl apply --config my-config
+uv run skillctl plan --out approved-plan.json --config my-config
+uv run skillctl apply --plan-file approved-plan.json --plan-sha256 <reported-sha256> --config my-config
 uv run skillctl verify --config my-config
 uv run skillctl status --json --config my-config
 ```
 
-`apply` does not consume the displayed `plan` output. It recomputes and immediately executes a new plan from the current state.
+Review the canonical artifact and its reported SHA-256 before apply. Bound apply verifies the exact
+bytes and recomputes an equal plan from fresh configuration, complete locked sources, and targets.
+It fails closed when any bound identity or operation changes.
 
-CAUTION: `--yes` authorizes each REMOVE in this new plan. V1 has no plan digest or approved plan-file input.
+CAUTION: add `--yes` when the approved plan contains REMOVE. The digest does not authorize deletion.
+
+Ordinary `skillctl apply --config my-config` remains available, but it is unbound: it recomputes and
+immediately executes a new plan rather than consuming prior displayed output.
 
 `apply` rejects stale or hostile state that its fresh checks detect. It never follows a mutable `track` value.
 
